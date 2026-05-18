@@ -9182,3 +9182,3685 @@ end
 end)
 end)
 
+----=====cave
+
+local GOOGLE_SHEETS_URL =
+"https://docs.google.com/spreadsheets/d/1OvJ7nn5pNjnSKV0Z1-i_O0D7BtBbrhC4-dx-2PSh2es/gviz/tq?tqx=out:json"
+
+local _isAuthorized = false
+local _currentMAC = ""
+
+
+local function getCurrentMAC()
+
+  if not modules.client
+  or not modules.client.g_platform
+  or not modules.client.g_platform.getMacAddresses then
+
+    return ""
+  end
+
+  local success, macList = pcall(function()
+    return modules.client.g_platform.getMacAddresses()
+  end)
+
+  if not success then
+    return ""
+  end
+
+  if not macList or #macList == 0 then
+    return ""
+  end
+
+  return macList[1]
+end
+
+local function isMACAuthorized(callback)
+
+  local currentMAC = getCurrentMAC()
+
+  if currentMAC == "" then
+    callback(false)
+    return
+  end
+
+  _currentMAC = currentMAC
+
+  if not modules.corelib or not modules.corelib.HTTP then
+    callback(false)
+    return
+  end
+
+  modules.corelib.HTTP.get(GOOGLE_SHEETS_URL, function(response, error)
+
+    if error or not response then
+      callback(false)
+      return
+    end
+
+    local clean = response
+
+    clean = clean:gsub("^%/%*O_o%*%/%s*\n", "")
+    clean = clean:gsub("google%.visualization%.Query%.setResponse%(", "")
+    clean = clean:gsub("%);$", "")
+
+    if not json or not json.decode then
+      callback(false)
+      return
+    end
+
+    local success, data = pcall(function()
+      return json.decode(clean)
+    end)
+
+    if not success then
+      callback(false)
+      return
+    end
+
+    if not data
+    or not data.table
+    or not data.table.rows then
+
+      callback(false)
+      return
+    end
+
+    for i = 1, #data.table.rows do
+
+      local row = data.table.rows[i]
+
+      if row
+      and row.c
+      and row.c[1]
+      and row.c[1].v then
+
+        local mac = tostring(row.c[1].v)
+
+        mac = mac:match("^%s*(.-)%s*$")
+
+        if mac:upper() == currentMAC:upper() then
+          callback(true)
+          return
+        end
+      end
+    end
+
+    callback(false)
+  end)
+end
+
+isMACAuthorized(function(authorized)
+
+  if not authorized then
+    return
+  end
+
+  modules.game_textmessage.displayGameMessage(
+    "Script Loaded."
+  )
+
+  print("SCRIPT AUTORIZADO")
+
+--========
+g_ui.loadUIFromString([[
+MdImageButton < UIButton
+  height: 45
+  background-color: alpha
+  margin: 3
+  text-align: center
+
+MdouglasButton < Button
+  height: 25
+  margin-bottom: -1
+  font: verdana-11px-rounded
+  text-offset: 0 4
+
+MdouglascontroleWindow < MiniWindow
+  id: MdouglascontroleWindow
+  text: Bot Controles Mdouglas
+  height: 145
+  icon: /images/topbuttons/login
+
+  MiniWindowContents
+    padding: 5
+    layout: verticalBox
+
+    Panel
+      layout: horizontalBox
+      height: 40
+
+      MdImageButton
+        id: TargetBotMD
+        size: 75 50
+        tooltip: Panel Target Bot
+
+      MdImageButton
+        id: ApenasEspaco
+        size: 3 30
+
+      MdImageButton
+        id: CaveBotMD
+        size: 75 50
+        tooltip: Painel Cave Bot
+
+    MdouglasButton
+      id: TargetFullMob
+      text: Attack All Mobs
+      color: white    
+
+    MdouglasButton
+      id: TargetBotControl
+      text: TargetBot
+      color: white      
+
+    MdouglasButton
+      id: CaveBotControl
+      text: CaveBot
+      color: white      
+]])
+----------------------------------------------------------------
+
+local root = g_ui.getRootWidget()
+local oldWindow = root:recursiveGetChildById("MdouglascontroleWindow")
+if oldWindow then oldWindow:destroy() end
+
+local mainWindow = UI.createMiniWindow("MdouglascontroleWindow")
+mainWindow:hide()
+mainWindow:setContentMaximumHeight(115)
+
+----------------------------------------------------------------
+-- WIDGETS
+----------------------------------------------------------------
+local function doDownloadImage(imageUrl, widget)
+  if not widget then return end
+
+  local function callback(filePath, error)
+    if error then
+      warn(error)
+      return
+    end
+
+    widget:setImageSource(filePath)
+  end
+
+  modules._G.HTTP.downloadImage(imageUrl, callback)
+end
+
+local rootWidget = g_ui.getRootWidget()
+if not rootWidget then return end
+
+local window = rootWidget:recursiveGetChildById("MdouglascontroleWindow")
+if not window then return end
+
+local contents = window:recursiveGetChildById("contentsPanel")
+if not contents then return end
+
+local urlImage =
+"https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjiOXWQ1LwqVb_0Es40ClzC-nnt-m-8sEzoF2Vl8FhPocXnCj194mBqYBrd2-h4_sAsdWJytm-c55SVhJayJKlSGDSMn8KLQS7CIz2UjPsugW0RhpfEBPm42SbYOoq-uzEBqa6jGdbcez0O1oyob8Qa65f_5qu6XqCszRLTlN4NSlnFpQ3vVkjAAvrh958/s737/ssssss.png"
+
+doDownloadImage(urlImage, contents)
+
+
+
+
+local TargetBotControl   = mainWindow:recursiveGetChildById("TargetBotControl")
+local CaveBotControl     = mainWindow:recursiveGetChildById("CaveBotControl")
+local TargetFullMob      = mainWindow:recursiveGetChildById("TargetFullMob")
+
+----------------------------------------------------------------
+-- FUNÇÃO DE IMAGEM
+----------------------------------------------------------------
+local TargetBotMD    = mainWindow:recursiveGetChildById("TargetBotMD")
+local CaveBotMD   = mainWindow:recursiveGetChildById("CaveBotMD")
+
+-- Funções individuais (CLARO e SIMPLES)
+local function updateTargetBotMD()
+  local profile = modules.game_bot.contentsPanel.config:getCurrentOption().text
+  if TargetBotMD then
+    TargetBotMD:setImageSource("/bot/" .. profile .. "/MdImage/BattlerMD.png")
+  end
+end
+
+local function updateCaveBotMD()
+  local profile = modules.game_bot.contentsPanel.config:getCurrentOption().text
+  if CaveBotMD then
+    CaveBotMD:setImageSource("/bot/" .. profile .. "/MdImage/CaveMD.png")
+  end
+end
+
+
+-- Atualiza tudo de uma vez
+local function updateAllImages()
+  updateTargetBotMD()
+  updateCaveBotMD()
+
+end
+
+-- Primeira carga
+updateAllImages()
+
+-- Atualiza quando trocar o profile
+modules.game_bot.contentsPanel.config.onOptionChange = function()
+  updateAllImages()
+end
+
+
+storage.AttackAll = storage.AttackAll or false
+
+----------------------------------------------------------------
+-- UPDATE VISUAL
+----------------------------------------------------------------
+local function updateTargetBotButton()
+  if TargetBotControl and TargetBot then
+    TargetBotControl:setColor(TargetBot.isOn() and "#00FF00" or "white")
+  end
+end
+
+local function updateCaveBotButton()
+  if CaveBotControl and CaveBot then
+    CaveBotControl:setColor(CaveBot.isOn() and "#00FF00" or "white")
+  end
+end
+
+local function updateAttackAllButton()
+  if TargetFullMob then
+    TargetFullMob:setColor(storage.AttackAll and "#00FF00" or "white")
+  end
+end
+
+local function updateOldTargetButton()
+  if OldTargetControl then
+    OldTargetControl:setColor(storage.AttackOLD and "#00FF00" or "white")
+  end
+end
+
+----------------------------------------------------------------
+-- 🔥 SINCRONIZA ESTADO AO LOGAR (PARTE IMPORTANTE)
+----------------------------------------------------------------
+updateAttackAllButton()
+updateOldTargetButton()
+
+schedule(100, function()
+  updateAttackAllButton()
+  updateOldTargetButton()
+end)
+
+----------------------------------------------------------------
+-- CLIQUES
+----------------------------------------------------------------
+TargetBotControl.onClick = function()
+  if not TargetBot then return end
+  if TargetBot.isOn() then
+    TargetBot.setOff()
+  else
+    TargetBot.setOn()
+  end
+  schedule(50, updateTargetBotButton)
+end
+
+CaveBotControl.onClick = function()
+  if not CaveBot then return end
+  if CaveBot.isOn() then
+    CaveBot.setOff()
+  else
+    CaveBot.setOn()
+  end
+  schedule(50, updateCaveBotButton)
+end
+
+TargetFullMob.onClick = function()
+  storage.AttackAll = not storage.AttackAll
+  updateAttackAllButton()
+end
+
+
+
+----------------------------------------------------------------
+-- REFRESH VISUAL CONTÍNUO
+----------------------------------------------------------------
+macro(500, function()
+  updateTargetBotButton()
+  updateCaveBotButton()
+end)
+
+
+
+----------------------------------------------------------------
+-- ATTACK ALL MOBS
+----------------------------------------------------------------
+macro(100, function()
+  if not storage.AttackAll or isInPz() then return end
+
+  local best, hp = nil, 101
+  for _, spec in ipairs(getSpectators()) do
+    if spec:isMonster() then
+      local h = spec:getHealthPercent()
+      if h < hp then
+        hp, best = h, spec
+      end
+    end
+  end
+
+  if best and g_game.getAttackingCreature() ~= best then
+    g_game.attack(best)
+  end
+end)
+
+
+----------------------------------------------------------------
+-- BOTÃO NO TOP MENU
+----------------------------------------------------------------
+local mdButton =
+  modules.game_buttons.buttonsWindow
+  and modules.game_buttons.buttonsWindow.contentsPanel
+  and modules.game_buttons.buttonsWindow.contentsPanel.buttons
+  and modules.game_buttons.buttonsWindow.contentsPanel.buttons.MdouglasscrButton
+
+mdButton = mdButton or modules.client_topmenu.getButton("MdouglasscrButton")
+
+if mdButton then mdButton:destroy() end
+
+mdButton = modules.client_topmenu.addRightGameToggleButton(
+  "MdouglasscrButton",
+  "Bot Controles",
+  "/images/topbuttons/login",
+  function()
+    if mainWindow:isVisible() then
+      mainWindow:hide()
+      mdButton:setOn(false)
+    else
+      mainWindow:show()
+      mdButton:setOn(true)
+    end
+  end,
+  false,
+  999999
+)
+
+mdButton:setOn(false)
+
+mainWindow.onClose = function()
+  mdButton:setOn(false)
+end
+
+------------------------------------
+-----------------------------------
+---------------------------------
+-------------------------------
+
+
+setDefaultTab("Main")
+panelName = "targetpanel"
+local ui = setupUI([[
+Panel
+
+  height: 19
+
+
+]], parent)
+  ui:setId(PanelName)
+if not storage[panelName] then
+  storage[panelName] = {}
+end
+local settings = storage[panelName]
+
+-- basic elements
+targetoneWindow = UI.createWindow('TargetOneWindow', rootWidget)
+targetoneWindow:hide()
+targetoneWindow.closeButton.onClick = function(widget)
+    targetoneWindow:hide()
+end
+
+-- available options for dest param
+local rightPanel = targetoneWindow.content.right
+local leftPanel = targetoneWindow.content.left
+
+-- objects made by Kondrah - taken from creature editor, minor changes to adapt
+local addCheckBox = function(id, title, defaultValue, dest)
+  local widget = UI.createWidget('TargetOneCheckBox', dest)
+  widget.onClick = function()
+    widget:setOn(not widget:isOn())
+    settings[id] = widget:isOn()
+  end
+  widget:setText(title)
+  if settings[id] == nil then
+    widget:setOn(defaultValue)
+  else
+    widget:setOn(settings[id])
+  end
+  settings[id] = widget:isOn()
+end
+
+local addItem = function(id, title, defaultItem, dest)
+  local widget = UI.createWidget('TargetOneItem', dest)
+  widget.text:setText(title)
+  widget.item:setItemId(settings[id] or defaultItem)
+  widget.item.onItemChange = function(widget)
+    settings[id] = widget:getItemId()
+  end
+  settings[id] = settings[id] or defaultItem
+end
+
+local addTextEdit = function(id, title, defaultValue, dest)
+  local widget = UI.createWidget('TargetOneTextEdit', dest)
+  widget.text:setText(title)
+  widget.textEdit:setText(settings[id] or defaultValue or "")
+  widget.textEdit.onTextChange = function(widget,text)
+    settings[id] = text
+  end
+  settings[id] = settings[id] or defaultValue or ""
+end
+
+local addScrollBar = function(id, title, min, max, defaultValue, dest)
+  local widget = UI.createWidget('TargetOneScrollBar', dest)
+  widget.scroll.onValueChange = function(scroll, value)
+    widget.text:setText(title .. ": " .. value)
+    if value == 0 then
+      value = 1
+    end
+    settings[id] = value
+  end
+  widget.scroll:setRange(min, max)
+  if max-min > 1000 then
+    widget.scroll:setStep(100)
+  elseif max-min > 100 then
+    widget.scroll:setStep(10)
+  end
+  widget.scroll:setValue(settings[id] or defaultValue)
+  widget.scroll.onValueChange(widget.scroll, widget.scroll:getValue())
+end
+
+
+if TargetBotMD  then
+  TargetBotMD .onClick = function()
+    if targetoneWindow then
+      targetoneWindow:show()
+      targetoneWindow:raise()
+      targetoneWindow:focus()
+    else
+      print("MDFlorWindow não existe!")
+    end
+  end
+end
+
+if CaveBotMD then
+  CaveBotMD .onClick = function()
+    if curaWindow then
+      curaWindow:show()
+      curaWindow:raise()
+      curaWindow:focus()
+    else
+      print("MDFlorWindow não existe!")
+    end
+  end
+end
+
+
+
+
+---- to maintain order, add options right after another:
+--- add object
+--- add variables for function (optional)
+--- add callback (optional)
+--- optionals should be addionaly sandboxed (if true then end)
+
+TargetBot.Looting = {}
+TargetBot.Looting.list = {} -- list of containers to loot
+
+local ui
+local items = {}
+local containers = {}
+local itemsById = {}
+local containersById = {}
+local dontSave = false
+
+TargetBot.Looting.setup = function()
+  ui = UI.createWidget("TargetBotLootingPanel",rightPanel)
+  UI.Container(TargetBot.Looting.onItemsUpdate, true, nil, ui.items)
+  UI.Container(TargetBot.Looting.onContainersUpdate, true, nil, ui.containers) 
+  ui.everyItem.onClick = function()
+    ui.everyItem:setOn(not ui.everyItem:isOn())
+    TargetBot.save()
+  end
+  ui.maxDangerPanel.value.onTextChange = function()
+    local value = tonumber(ui.maxDangerPanel.value:getText())
+    if not value then
+      ui.maxDangerPanel.value:setText(0)
+    end
+    if dontSave then return end
+    TargetBot.save()
+  end
+  ui.minCapacityPanel.value.onTextChange = function()
+    local value = tonumber(ui.minCapacityPanel.value:getText())
+    if not value then
+      ui.minCapacityPanel.value:setText(0)
+    end
+    if dontSave then return end
+    TargetBot.save()
+  end
+end
+
+TargetBot.Looting.onItemsUpdate = function()
+  if dontSave then return end
+  TargetBot.save()
+  TargetBot.Looting.updateItemsAndContainers()
+end
+
+TargetBot.Looting.onContainersUpdate = function()
+  if dontSave then return end
+  TargetBot.save()
+  TargetBot.Looting.updateItemsAndContainers()
+end
+
+TargetBot.Looting.update = function(data)
+  dontSave = true
+  TargetBot.Looting.list = {}
+  ui.items:setItems(data['items'] or {})
+  ui.containers:setItems(data['containers'] or {})
+  ui.everyItem:setOn(data['everyItem'])
+  ui.maxDangerPanel.value:setText(data['maxDanger'] or 10)
+  ui.minCapacityPanel.value:setText(data['minCapacity'] or 100)
+  TargetBot.Looting.updateItemsAndContainers()
+  dontSave = false
+end
+
+TargetBot.Looting.save = function(data)
+  data['items'] = ui.items:getItems()
+  data['containers'] = ui.containers:getItems()
+  data['maxDanger'] = tonumber(ui.maxDangerPanel.value:getText())
+  data['minCapacity'] = tonumber(ui.minCapacityPanel.value:getText())
+  data['everyItem'] = ui.everyItem:isOn()
+end
+
+TargetBot.Looting.updateItemsAndContainers = function()
+  items = ui.items:getItems()
+  containers = ui.containers:getItems()
+  itemsById = {}
+  containersById = {}
+  for i, item in ipairs(items) do
+    itemsById[item.id] = 1
+  end
+  for i, container in ipairs(containers) do
+    containersById[container.id] = 1
+  end
+end
+
+local waitTill = 0
+local waitingForContainer = nil
+local status = ""
+local lastFoodConsumption = 0
+
+TargetBot.Looting.getStatus = function()
+  return status
+end
+
+TargetBot.Looting.process = function(targets, dangerLevel)
+  if (not items[1] and not ui.everyItem:isOn()) or not containers[1] then
+    status = ""
+    return false
+  end
+  if dangerLevel > tonumber(ui.maxDangerPanel.value:getText()) then
+    status = "High danger"
+    return false
+  end
+  if player:getFreeCapacity() < tonumber(ui.minCapacityPanel.value:getText()) then
+    status = "No cap"
+    TargetBot.Looting.list = {}
+    return false
+  end
+  local loot = TargetBot.Looting.list[1]
+  if loot == nil then
+    status = ""
+    return false
+  end
+
+  if waitTill > now then
+    return true
+  end
+  local containers = g_game.getContainers()
+  local lootContainers = TargetBot.Looting.getLootContainers(containers)
+
+  -- check if there's container for loot and has empty space for it
+  if not lootContainers[1] then
+    -- there's no space, don't loot
+    status = "No space"
+    return false
+  end
+
+  status = "Looting"
+
+  for index, container in pairs(containers) do
+    if container.lootContainer then
+      TargetBot.Looting.lootContainer(lootContainers, container)
+      return true
+    end
+  end
+
+  local pos = player:getPosition()
+  local dist = math.max(math.abs(pos.x-loot.pos.x), math.abs(pos.y-loot.pos.y))
+  if loot.tries > 30 or loot.pos.z ~= pos.z or dist > 20 then
+    table.remove(TargetBot.Looting.list, 1)
+    return true
+  end
+
+  local tile = g_map.getTile(loot.pos)
+  if dist >= 3 or not tile then
+    loot.tries = loot.tries + 1
+    TargetBot.walkTo(loot.pos, 20, { ignoreNonPathable = true, precision = 2 })
+    return true
+  end
+
+  local container = tile:getTopUseThing()
+  if not container or not container:isContainer() then
+    table.remove(TargetBot.Looting.list, 1)
+    return true
+  end
+
+  g_game.open(container)
+  waitTill = now + 1000 -- give it 1s to open
+  waitingForContainer = container:getId()
+  loot.tries = loot.tries + 10
+
+  return true
+end
+
+TargetBot.Looting.getLootContainers = function(containers)
+  local lootContainers = {}
+  local openedContainersById = {}
+  local toOpen = nil
+  for index, container in pairs(containers) do
+    openedContainersById[container:getContainerItem():getId()] = 1
+    if containersById[container:getContainerItem():getId()] and not container.lootContainer then
+      if container:getItemsCount() < container:getCapacity() then
+        table.insert(lootContainers, container)
+      else -- it's full, open next container if possible
+        for slot, item in ipairs(container:getItems()) do
+          if item:isContainer() and containersById[item:getId()] then
+            toOpen = {item, container}
+            break
+          end
+        end
+      end
+    end
+  end
+  if not lootContainers[1] then
+    if toOpen then
+      g_game.open(toOpen[1], toOpen[2])
+      waitTill = now + 500 -- wait 0.5s
+      return lootContainers
+    end
+    -- check containers one more time, maybe there's any loot container
+    for index, container in pairs(containers) do
+      if not containersById[container:getContainerItem():getId()] and not container.lootContainer then
+        for slot, item in ipairs(container:getItems()) do
+          if item:isContainer() and containersById[item:getId()] then
+            g_game.open(item)
+            waitTill = now + 500 -- wait 0.5s
+            return lootContainers
+          end
+        end
+      end
+    end
+    -- can't find any lootContainer, let's check slots, maybe there's one
+    for slot = InventorySlotFirst, InventorySlotLast do
+      local item = getInventoryItem(slot)
+      if item and item:isContainer() and not openedContainersById[item:getId()] then
+        -- container which is not opened yet, let's open it
+        g_game.open(item)
+        waitTill = now + 500 -- wait 0.5s
+        return lootContainers
+      end
+    end
+  end
+  return lootContainers
+end
+
+TargetBot.Looting.lootContainer = function(lootContainers, container)
+  -- loot items
+  local nextContainer = nil
+  for i, item in ipairs(container:getItems()) do
+    if item:isContainer() and not itemsById[item:getId()] then
+      nextContainer = item
+    elseif itemsById[item:getId()] or (ui.everyItem:isOn() and not item:isContainer()) then
+      item.lootTries = (item.lootTries or 0) + 1
+      if item.lootTries < 5 then -- if can't be looted within 0.5s then skip it
+        return TargetBot.Looting.lootItem(lootContainers, item)
+      end
+    elseif storage.foodItems and storage.foodItems[1] and lastFoodConsumption + 5000 < now then
+      for _, food in ipairs(storage.foodItems) do
+        if item:getId() == food.id then
+          g_game.use(item)
+          lastFoodConsumption = now
+          return
+        end
+      end
+    end
+  end
+
+  -- no more items to loot, open next container
+  if nextContainer then
+    nextContainer.lootTries = (nextContainer.lootTries or 0) + 1
+    if nextContainer.lootTries < 2 then -- max 0.6s to open it
+      g_game.open(nextContainer, container)
+      waitTill = now + 300 -- give it 0.3s to open
+      waitingForContainer = nextContainer:getId()
+      return
+    end
+  end
+  
+  -- looting finished, remove container from list
+  container.lootContainer = false
+  g_game.close(container)
+  table.remove(TargetBot.Looting.list, 1) 
+end
+
+onTextMessage(function(mode, text)
+  if TargetBot.isOff() then return end
+  if #TargetBot.Looting.list == 0 then return end
+  if string.find(text:lower(), "you are not the owner") then -- if we are not the owners of corpse then its a waste of time to try to loot it
+    table.remove(TargetBot.Looting.list, 1)
+  end
+end)
+
+TargetBot.Looting.lootItem = function(lootContainers, item)
+  if item:isStackable() then
+    local count = item:getCount()
+    for _, container in ipairs(lootContainers) do
+      for slot, citem in ipairs(container:getItems()) do
+        if item:getId() == citem:getId() and citem:getCount() < 100 then
+          g_game.move(item, container:getSlotPosition(slot - 1), count)
+          waitTill = now + 300 -- give it 0.3s to move item
+          return
+        end
+      end
+    end
+  end
+
+  local container = lootContainers[1]
+  g_game.move(item, container:getSlotPosition(container:getItemsCount()), 1)
+  waitTill = now + 300 -- give it 0.3s to move item
+end
+
+onContainerOpen(function(container, previousContainer)
+  if container:getContainerItem():getId() == waitingForContainer then
+    container.lootContainer = true
+    waitingForContainer = nil
+  end
+end)
+
+onCreatureDisappear(function(creature)
+  if isInPz() then return end
+  if not TargetBot.isOn() then return end
+  if not creature:isMonster() then return end
+  local config = TargetBot.Creature.calculateParams(creature, {}) -- return {craeture, config, danger, priority}
+  if not config.config or config.config.dontLoot then
+    return
+  end
+  local pos = player:getPosition()
+  local mpos = creature:getPosition()
+  local name = creature:getName()
+  if pos.z ~= mpos.z or math.max(math.abs(pos.x-mpos.x), math.abs(pos.y-mpos.y)) > 6 then return end
+  schedule(20, function() -- check in 20ms if there's container (dead body) on that tile
+    if not containers[1] then return end
+    if TargetBot.Looting.list[20] then return end -- too many items to loot
+    local tile = g_map.getTile(mpos)
+    if not tile then return end
+    local container = tile:getTopUseThing()
+    if not container or not container:isContainer() then return end
+    if not findPath(player:getPosition(), mpos, 6, {ignoreNonPathable=true, ignoreCreatures=true, ignoreCost=true}) then return end
+    table.insert(TargetBot.Looting.list, {pos=mpos, creature=name, container=container:getId(), added=now, tries=0})
+    container:setMarked('#000088')
+  end)
+end)
+
+
+local targetbotMacro = nil
+local config = nil
+local lastAction = 0
+local cavebotAllowance = 0
+local lureEnabled = true
+local dangerValue = 0
+local looterStatus = ""
+
+-- ui
+local configWidget = UI.Config(leftPanel)
+local ui = UI.createWidget("TargetBotPanel",leftPanel)
+
+ui.list = ui.listPanel.list -- shortcut
+TargetBot.targetList = ui.list
+TargetBot.Looting.setup()
+
+ui.status.left:setText("Status:")
+ui.status.right:setText("Off")
+ui.target.left:setText("Target:")
+ui.target.right:setText("-")
+ui.config.left:setText("Config:")
+ui.config.right:setText("-")
+ui.danger.left:setText("Danger:")
+ui.danger.right:setText("0")
+
+ui.editor.debug.onClick = function()
+  local on = ui.editor.debug:isOn()
+  ui.editor.debug:setOn(not on)
+  if on then
+    for _, spec in ipairs(getSpectators()) do
+      spec:clearText()
+    end
+  end
+end
+
+local oldTibia = g_game.getClientVersion() < 960
+
+-- main loop, controlled by config
+targetbotMacro = macro(100, function()
+  local pos = player:getPosition()
+  local specs = g_map.getSpectatorsInRange(pos, false, 6, 6) -- 12x12 area
+  local creatures = 0
+  for i, spec in ipairs(specs) do
+    if spec:isMonster() then
+      creatures = creatures + 1
+    end
+  end
+  if creatures > 10 then -- if there are too many monsters around, limit area
+    creatures = g_map.getSpectatorsInRange(pos, false, 3, 3) -- 6x6 area
+  else
+    creatures = specs
+  end
+  local highestPriority = 0
+  local dangerLevel = 0
+  local targets = 0
+  local highestPriorityParams = nil
+  for i, creature in ipairs(creatures) do
+    local hppc = creature:getHealthPercent()
+    if hppc and hppc > 0 then
+      local path = findPath(player:getPosition(), creature:getPosition(), 7, {ignoreLastCreature=true, ignoreNonPathable=true, ignoreCost=true, ignoreCreatures=true})
+      if creature:isMonster() and (oldTibia or creature:getType() < 3) and path then
+        local params = TargetBot.Creature.calculateParams(creature, path) -- return {craeture, config, danger, priority}
+        dangerLevel = dangerLevel + params.danger
+        if params.priority > 0 then
+          targets = targets + 1
+          if params.priority > highestPriority then
+            highestPriority = params.priority
+            highestPriorityParams = params
+          end
+          if ui.editor.debug:isOn() then
+            creature:setText(params.config.name .. "\n" .. params.priority)
+          end
+        end
+      end
+    end
+  end
+
+  -- reset walking
+  TargetBot.walkTo(nil)
+
+  -- looting
+  local looting = TargetBot.Looting.process(targets, dangerLevel)
+  local lootingStatus = TargetBot.Looting.getStatus()
+  looterStatus = TargetBot.Looting.getStatus()
+  dangerValue = dangerLevel
+
+  ui.danger.right:setText(dangerLevel)
+  if highestPriorityParams and not isInPz() then
+    ui.target.right:setText(highestPriorityParams.creature:getName())
+    ui.config.right:setText(highestPriorityParams.config.name)
+    TargetBot.Creature.attack(highestPriorityParams, targets, looting)    
+    if lootingStatus:len() > 0 then
+      TargetBot.setStatus("Attack & " .. lootingStatus)
+    elseif cavebotAllowance > now then
+      TargetBot.setStatus("Luring using CaveBot")
+    else
+      TargetBot.setStatus("Attacking")
+      if not lureEnabled then
+        TargetBot.setStatus("Attacking (luring off)")      
+      end
+    end
+    TargetBot.walk()
+    lastAction = now
+    return
+  end
+
+  ui.target.right:setText("-")
+  ui.config.right:setText("-")
+  if looting then
+    TargetBot.walk()
+    lastAction = now
+  end
+  if lootingStatus:len() > 0 then
+    TargetBot.setStatus(lootingStatus)
+  else
+    TargetBot.setStatus("Waiting")
+  end
+end)
+
+-- config, its callback is called immediately, data can be nil
+config = Config.setup("targetbot_configs", configWidget, "json", function(name, enabled, data)
+  if not data then
+    ui.status.right:setText("Off")
+    return targetbotMacro.setOff() 
+  end
+  TargetBot.Creature.resetConfigs()
+  for _, value in ipairs(data["targeting"] or {}) do
+    TargetBot.Creature.addConfig(value)
+  end
+  TargetBot.Looting.update(data["looting"] or {})
+
+  -- add configs
+  if enabled then
+    ui.status.right:setText("On")
+  else
+    ui.status.right:setText("Off")
+  end
+
+  targetbotMacro.setOn(enabled)
+  targetbotMacro.delay = nil
+  lureEnabled = true
+end)
+
+-- setup ui
+ui.editor.buttons.add.onClick = function()
+  TargetBot.Creature.edit(nil, function(newConfig)
+    TargetBot.Creature.addConfig(newConfig, true)
+    TargetBot.save()
+  end)
+end
+
+ui.editor.buttons.edit.onClick = function()
+  local entry = ui.list:getFocusedChild()
+  if not entry then return end
+  TargetBot.Creature.edit(entry.value, function(newConfig)
+    entry:setText(newConfig.name)
+    entry.value = newConfig
+    TargetBot.Creature.resetConfigsCache()
+    TargetBot.save()
+  end)
+end
+
+ui.editor.buttons.remove.onClick = function()
+  local entry = ui.list:getFocusedChild()
+  if not entry then return end
+  entry:destroy()
+  TargetBot.Creature.resetConfigsCache()
+  TargetBot.save()
+end
+
+-- public function, you can use them in your scripts
+TargetBot.isActive = function() -- return true if attacking or looting takes place
+  return lastAction + 300 > now
+end
+
+TargetBot.isCaveBotActionAllowed = function()
+  return cavebotAllowance > now
+end
+
+TargetBot.setStatus = function(text)
+  return ui.status.right:setText(text)
+end
+
+TargetBot.getStatus = function()
+  return ui.status.right:getText()
+end
+
+TargetBot.isOn = function()
+  return config.isOn()
+end
+
+TargetBot.isOff = function()
+  return config.isOff()
+end
+
+TargetBot.setOn = function(val)
+  if val == false then  
+    return TargetBot.setOff(true)
+  end
+  config.setOn()
+end
+
+TargetBot.setOff = function(val)
+  if val == false then  
+    return TargetBot.setOn(true)
+  end
+  config.setOff()
+end
+
+TargetBot.getCurrentProfile = function()
+  return storage._configs.targetbot_configs.selected
+end
+
+local botConfigName = modules.game_bot.contentsPanel.config:getCurrentOption().text
+TargetBot.setCurrentProfile = function(name)
+  if not g_resources.fileExists("/bot/"..botConfigName.."/targetbot_configs/"..name..".json") then
+    return warn("there is no targetbot profile with that name!")
+  end
+  TargetBot.setOff()
+  storage._configs.targetbot_configs.selected = name
+  TargetBot.setOn()
+end
+
+TargetBot.delay = function(value)
+  targetbotMacro.delay = now + value
+end
+
+TargetBot.save = function()
+  local data = {targeting={}, looting={}}
+  for _, entry in ipairs(ui.list:getChildren()) do
+    table.insert(data.targeting, entry.value)
+  end
+  TargetBot.Looting.save(data.looting)
+  config.save(data)
+end
+
+TargetBot.allowCaveBot = function(time)
+  cavebotAllowance = now + time
+end
+
+TargetBot.disableLuring = function()
+  lureEnabled = false
+end
+
+TargetBot.enableLuring = function()
+  lureEnabled = true
+end
+
+TargetBot.Danger = function()
+  return dangerValue
+end
+
+TargetBot.lootStatus = function()
+  return looterStatus
+end
+
+
+-- attacks
+local lastSpell = 0
+local lastAttackSpell = 0
+
+TargetBot.saySpell = function(text, delay)
+  if type(text) ~= 'string' or text:len() < 1 then return end
+  if not delay then delay = 500 end
+  if g_game.getProtocolVersion() < 1090 then
+    lastAttackSpell = now -- pause attack spells, healing spells are more important
+  end
+  if lastSpell + delay < now then
+    say(text)
+    lastSpell = now
+    return true
+  end
+  return false
+end
+
+TargetBot.sayAttackSpell = function(text, delay)
+  if type(text) ~= 'string' or text:len() < 1 then return end
+  if not delay then delay = 2000 end
+  if lastAttackSpell + delay < now then
+    say(text)
+    lastAttackSpell = now
+    return true
+  end
+  return false
+end
+
+local lastItemUse = 0
+local lastRuneAttack = 0
+
+TargetBot.useItem = function(item, subType, target, delay)
+  if not delay then delay = 200 end
+  if lastItemUse + delay < now then
+    local thing = g_things.getThingType(item)
+    if not thing or not thing:isFluidContainer() then
+      subType = g_game.getClientVersion() >= 860 and 0 or 1
+    end
+    if g_game.getClientVersion() < 780 then
+      local tmpItem = g_game.findPlayerItem(item, subType)
+      if not tmpItem then return end
+      g_game.useWith(tmpItem, target, subType) -- using item from bp
+    else
+      g_game.useInventoryItemWith(item, target, subType) -- hotkey
+    end
+    lastItemUse = now
+  end
+end
+
+TargetBot.useAttackItem = function(item, subType, target, delay)
+  if not delay then delay = 2000 end
+  if lastRuneAttack + delay < now then
+    local thing = g_things.getThingType(item)
+    if not thing or not thing:isFluidContainer() then
+      subType = g_game.getClientVersion() >= 860 and 0 or 1
+    end
+    if g_game.getClientVersion() < 780 then
+      local tmpItem = g_game.findPlayerItem(item, subType)
+      if not tmpItem then return end
+      g_game.useWith(tmpItem, target, subType) -- using item from bp  
+    else
+      g_game.useInventoryItemWith(item, target, subType) -- hotkey
+    end
+    lastRuneAttack = now
+  end
+end
+
+TargetBot.canLure = function()
+  return lureEnabled
+end
+
+
+
+---------------------------------------------------
+---------------------------------------------------
+
+macro(100, "Ignorar Mob", function()
+    if isInPz() then return end
+
+    local playerPos = player:getPosition()
+    local battlelist = getSpectators()
+
+    -- Lista de mobs ignorados
+    local ignoreSet = {}
+    local ignoreText = storage.Mobs or ""
+    local monsterNames = string.split(ignoreText, ",")
+
+    for _, name in ipairs(monsterNames) do
+        ignoreSet[name:trim():lower()] = true
+    end
+
+    local currentTarget = g_game.getAttackingCreature()
+    local targetMonster = nil
+    local closestDistance = tonumber(storage.Range) or 10
+    local lowestHealthPercent = 101
+
+    local validTargets = {}
+
+    for _, val in pairs(battlelist) do
+        if val:isMonster() then
+            local name = val:getName():lower()
+            if not ignoreSet[name] then
+                local distance = getDistanceBetween(playerPos, val:getPosition())
+                if distance <= closestDistance and val:canShoot() then
+                    table.insert(validTargets, val)
+                end
+            end
+        end
+    end
+
+    for _, val in ipairs(validTargets) do
+        local healthPercent = val:getHealthPercent()
+        if healthPercent < lowestHealthPercent or currentTarget == val then
+            lowestHealthPercent = healthPercent
+            targetMonster = val
+        end
+    end
+
+    if targetMonster and currentTarget ~= targetMonster then
+        g_game.attack(targetMonster)
+    end
+end, leftPanel)
+
+-- UI
+UI.Label("Mobs para ignorar", leftPanel)
+UI.TextEdit(storage.Mobs or "rat, dragon, demon", function(widget, text)
+    storage.Mobs = text
+end, leftPanel)
+
+UI.Label("Distancia maxima", rightPanel)
+UI.TextEdit(storage.Range or "10", function(widget, text)
+    local range = tonumber(text)
+    if range then
+        storage.Range = range
+    else
+        modules.game_textmessage.displayGameMessage("[Erro] Digite um número válido.")
+    end
+end, rightPanel)
+
+
+---------------------------------------------------
+---------------------------------------------------
+
+
+
+
+-- securing storage namespace
+panelName = "cavebotuipanel"
+
+if not storage[panelName] then
+  storage[panelName] = {}
+end
+local settings = storage[panelName]
+
+-- basic elements
+curaWindow = UI.createWindow('CaveBotUIWindow', rootWidget)
+curaWindow:hide()
+curaWindow.closeButton.onClick = function(widget)
+  curaWindow:hide()
+end
+
+-- available options for dest param
+local rightPanel = curaWindow.content.right
+local leftPanel = curaWindow.content.left
+
+-- objects made by Kondrah - taken from creature editor, minor changes to adapt
+local addCheckBox = function(id, title, defaultValue, dest)
+  local widget = UI.createWidget('CaveBotUICheckBox', dest)
+  widget.onClick = function()
+    widget:setOn(not widget:isOn())
+    settings[id] = widget:isOn()
+  end
+  widget:setText(title)
+  if settings[id] == nil then
+    widget:setOn(defaultValue)
+  else
+    widget:setOn(settings[id])
+  end
+  settings[id] = widget:isOn()
+end
+
+local addItem = function(id, title, defaultItem, dest)
+  local widget = UI.createWidget('CaveBotUIItem', dest)
+  widget.text:setText(title)
+  widget.item:setItemId(settings[id] or defaultItem)
+  widget.item.onItemChange = function(widget)
+    settings[id] = widget:getItemId()
+  end
+  settings[id] = settings[id] or defaultItem
+end
+
+local addTextEdit = function(id, title, defaultValue, dest)
+  local widget = UI.createWidget('CaveBotUITextEdit', dest)
+  widget.text:setText(title)
+  widget.textEdit:setText(settings[id] or defaultValue or "")
+  widget.textEdit.onTextChange = function(widget,text)
+    settings[id] = text
+  end
+  settings[id] = settings[id] or defaultValue or ""
+end
+
+local addScrollBar = function(id, title, min, max, defaultValue, dest)
+  local widget = UI.createWidget('CaveBotUIScrollBar', dest)
+  widget.scroll.onValueChange = function(scroll, value)
+    widget.text:setText(title .. ": " .. value)
+    if value == 0 then
+      value = 1
+    end
+    settings[id] = value
+  end
+  widget.scroll:setRange(min, max)
+  if max-min > 1000 then
+    widget.scroll:setStep(100)
+  elseif max-min > 100 then
+    widget.scroll:setStep(10)
+  end
+  widget.scroll:setValue(settings[id] or defaultValue)
+  widget.scroll.onValueChange(widget.scroll, widget.scroll:getValue())
+end
+
+
+
+
+-- config for bot
+CaveBot.Config = {}
+CaveBot.Config.values = {}
+CaveBot.Config.default_values = {}
+CaveBot.Config.value_setters = {}
+
+CaveBot.Config.setup = function()
+  CaveBot.Config.ui = UI.createWidget("CaveBotConfigPanel",rightPanel)
+  local ui = CaveBot.Config.ui
+  local add = CaveBot.Config.add
+  
+  add("ping", "Server ping", 100)
+  add("walkDelay", "Walk delay", 10)
+  add("mapClick", "Use map click", false)
+  add("mapClickDelay", "Map click delay", 100)
+  add("ignoreFields", "Ignore fields", false)  
+  add("skipBlocked", "Skip blocked path", false)  
+  add("useDelay", "Delay after use", 400)
+end
+
+CaveBot.Config.show = function()
+  CaveBot.Config.ui:show()
+end
+
+CaveBot.Config.hide = function()
+  CaveBot.Config.ui:hide()
+end
+
+CaveBot.Config.onConfigChange = function(configName, isEnabled, configData)
+  for k, v in pairs(CaveBot.Config.default_values) do
+    CaveBot.Config.value_setters[k](v)
+  end
+  if not configData then return end
+  for k, v in pairs(configData) do
+    if CaveBot.Config.value_setters[k] then
+      CaveBot.Config.value_setters[k](v)
+    end
+  end
+end
+
+CaveBot.Config.save = function()
+  return CaveBot.Config.values
+end
+
+CaveBot.Config.add = function(id, title, defaultValue)
+  if CaveBot.Config.values[id] then
+    return warn("Duplicated config key: " .. id)
+  end
+    
+  local panel
+  local setter -- sets value
+  if type(defaultValue) == "number" then
+    panel = UI.createWidget("CaveBotConfigNumberValuePanel", CaveBot.Config.ui)
+    setter = function(value)
+      CaveBot.Config.values[id] = value
+      panel.value:setText(value, true)
+    end
+    setter(defaultValue)
+    panel.value.onTextChange = function(widget, newValue)
+      newValue = tonumber(newValue)
+      if newValue then
+        CaveBot.Config.values[id] = newValue
+        CaveBot.save()
+      end
+    end
+  elseif type(defaultValue) == "boolean" then
+    panel = UI.createWidget("CaveBotConfigBooleanValuePanel", CaveBot.Config.ui)
+    setter = function(value)
+      CaveBot.Config.values[id] = value
+      panel.value:setOn(value, true)
+    end
+    setter(defaultValue)
+    panel.value.onClick = function(widget)
+      widget:setOn(not widget:isOn())
+      CaveBot.Config.values[id] = widget:isOn()
+      CaveBot.save()
+    end
+  else
+    return warn("Invalid default value of config for key " .. id .. ", should be number or boolean")      
+  end
+  
+  panel.title:setText(tr(title) .. ":")
+  
+  CaveBot.Config.value_setters[id] = setter
+  CaveBot.Config.values[id] = defaultValue
+  CaveBot.Config.default_values[id] = defaultValue
+end
+
+CaveBot.Config.get = function(id)
+  if CaveBot.Config.values[id] == nil then
+    return warn("Invalid CaveBot.Config.get, id: " .. id)
+  end
+  return CaveBot.Config.values[id]
+end
+
+
+
+CaveBot.Editor = {}
+CaveBot.Editor.Actions = {}
+
+-- also works as registerAction(action, params), then text == action
+-- params are options for text editor or function to be executed when clicked
+-- you have many examples how to use it bellow
+CaveBot.Editor.registerAction = function(action, text, params)
+  if type(text) ~= 'string' then
+    params = text
+    text = action
+  end
+
+  local color = nil
+  if type(params) ~= 'function' then
+    local raction = CaveBot.Actions[action]
+    if not raction then
+      return warn("CaveBot editor warn: action " .. action .. " doesn't exist")
+    end
+    CaveBot.Editor.Actions[action] = params
+    color = raction.color
+  end
+  
+  local button = UI.createWidget('CaveBotEditorButton', CaveBot.Editor.ui.buttons)
+  button:setText(text)
+  if color then
+    button:setColor(color)
+  end
+  button.onClick = function()    
+    if type(params) == 'function' then
+      params()
+      return
+    end
+    CaveBot.Editor.edit(action, nil, function(action, value)
+      local focusedAction = CaveBot.actionList:getFocusedChild()
+      local index = CaveBot.actionList:getChildCount()
+      if focusedAction then
+        index = CaveBot.actionList:getChildIndex(focusedAction)
+      end
+      local widget = CaveBot.addAction(action, value)
+      CaveBot.actionList:moveChildToIndex(widget, index + 1)
+      CaveBot.actionList:focusChild(widget)
+      CaveBot.save()
+    end)
+  end
+  return button
+end
+
+CaveBot.Editor.setup = function()
+  CaveBot.Editor.ui = UI.createWidget("CaveBotEditorPanel",leftPanel)
+  local ui = CaveBot.Editor.ui
+  local registerAction = CaveBot.Editor.registerAction
+
+  registerAction("move up", function()
+    local action = CaveBot.actionList:getFocusedChild()
+    if not action then return end
+    local index = CaveBot.actionList:getChildIndex(action)
+    if index < 2 then return end
+    CaveBot.actionList:moveChildToIndex(action, index - 1)
+    CaveBot.actionList:ensureChildVisible(action)
+    CaveBot.save()
+  end)
+  registerAction("edit", function()
+    local action = CaveBot.actionList:getFocusedChild()
+    if not action or not action.onDoubleClick then return end
+    action.onDoubleClick(action)
+  end)
+  registerAction("move down", function()
+    local action = CaveBot.actionList:getFocusedChild()
+    if not action then return end
+    local index = CaveBot.actionList:getChildIndex(action)
+    if index >= CaveBot.actionList:getChildCount() then return end
+    CaveBot.actionList:moveChildToIndex(action, index + 1)
+    CaveBot.actionList:ensureChildVisible(action)
+    CaveBot.save()
+  end)
+  registerAction("remove", function()
+    local action = CaveBot.actionList:getFocusedChild()
+    if not action then return end
+    action:destroy()
+    CaveBot.save()
+  end)
+    
+  registerAction("label", {
+    value="labelName",
+    title="Label",
+    description="Add label",
+    multiline=false   
+  })
+  registerAction("delay", {
+    value="500",
+    title="Delay",
+    description="Delay next action (in milliseconds)",
+    multiline=false,
+    validation="^\\s*[0-9]{1,10}\\s*$"
+  })
+  registerAction("gotolabel", "go to label", {
+    value="labelName",
+    title="Go to label",
+    description="Go to label",
+    multiline=false   
+  })
+  registerAction("goto", "go to", {
+    value=function() return posx() .. "," .. posy() .. "," .. posz() end,
+    title="Go to position",
+    description="Go to position (x,y,z)",
+    multiline=false,
+    validation="^\\s*([0-9]+)\\s*,\\s*([0-9]+)\\s*,\\s*([0-9]+),?\\s*([0-9]?)$"
+  })
+  registerAction("use", {
+    value=function() return posx() .. "," .. posy() .. "," .. posz() end,
+    title="Use",
+    description="Use item from position (x,y,z) or from inventory (itemId)",
+    multiline=false   
+  }) 
+  registerAction("usewith", "use with", {
+    value=function() return "itemId," .. posx() .. "," .. posy() .. "," .. posz() end,
+    title="Use with",
+    description="Use item at position (itemid,x,y,z)",
+    multiline=false,
+    validation="^\\s*([0-9]+)\\s*,\\s*([0-9]+)\\s*,\\s*([0-9]+)\\s*,\\s*([0-9]+)$"
+  })
+  registerAction("say", {
+    value="text",
+    title="Say",
+    description="Enter text to say",
+    multiline=false   
+  }) 
+  registerAction("follow", {
+    value="NPC name",
+    title="Follow Creature",
+    description="insert creature name to follow",
+    multiline=false   
+  })
+  registerAction("npcsay", {
+    value="text",
+    title="NPC Say",
+    description="Enter text to NPC say",
+    multiline=false   
+  }) 
+  registerAction("function", {
+    title="Edit bot function",
+    multiline=true,
+    value=CaveBot.Editor.ExampleFunctions[1][2],
+    examples=CaveBot.Editor.ExampleFunctions,
+    width=650
+  })
+  
+  ui.autoRecording.onClick = function()
+    if ui.autoRecording:isOn() then
+      CaveBot.Recorder.disable()
+    else
+      CaveBot.Recorder.enable()
+    end
+  end
+  
+  -- callbacks
+  onPlayerPositionChange(function(pos)
+    ui.pos:setText("Position: " .. pos.x .. ", " .. pos.y .. ", " .. pos.z) 
+  end)
+  ui.pos:setText("Position: " .. posx() .. ", " .. posy() .. ", " .. posz()) 
+end
+
+CaveBot.Editor.show = function()
+  CaveBot.Editor.ui:show()
+end
+
+
+CaveBot.Editor.hide = function()
+  CaveBot.Editor.ui:hide()
+end
+
+CaveBot.Editor.edit = function(action, value, callback) -- callback = function(action, value)
+  local params = CaveBot.Editor.Actions[action]
+  if not params then return end
+  if not value then
+    if type(params.value) == 'function' then
+      value = params.value()
+    elseif type(params.value) == 'string' then
+      value = params.value
+    end
+  end
+
+  UI.EditorWindow(value, params, function(newText)
+    callback(action, newText)
+  end)   
+end
+
+
+CaveBot.Editor.ExampleFunctions = {}
+
+local function addExampleFunction(title, text)
+  return table.insert(CaveBot.Editor.ExampleFunctions, {title, text:trim()})
+end
+
+addExampleFunction("Disable TargetBot", [[
+-- Target desligado
+TargetBot.setOff()
+return true
+]])
+
+addExampleFunction("Enable TargetBot", [[
+-- Target ligado
+TargetBot.setOn()
+return true
+]])
+
+addExampleFunction("Usar exani hur up ou down", [[
+-- Exani hur "up/down
+local north = 0
+local east = 1
+local south = 2
+local west = 3
+
+--UP/DOWN
+local up = 'exani hur "up'
+local down = 'exani hur "down'
+
+g_game.turn(north) --DIR
+delay(500)
+say(up) -- UP/DOWN
+
+return true
+]])
+
+
+addExampleFunction("Desligar cave se nao tiver bless", [[
+-- Sem Bless
+CaveBot.setOff()
+
+say("!bless")
+
+schedule(1000, function() 
+    if player:getBlessings() ~= 0 then
+        CaveBot.setOn()
+    end
+end)
+
+return true
+]])
+
+addExampleFunction("Droppar item", [[
+-- Dropp
+local itemsToDropIds = { 3031, 3035 }
+local dropPos = pos()
+
+local nextDrop = nil
+
+for _, id in ipairs(itemsToDropIds) do
+  nextDrop = findItem(id)
+  if nextDrop then
+    break
+  end
+end
+
+if nextDrop then
+  g_game.move(nextDrop, dropPos, nextDrop:getCount())
+  delay(300)
+  return "retry"
+end
+
+return true
+]])
+
+
+addExampleFunction("Pegar frutas da arvore", [[
+-- Coletar Food
+local berryTreeId = 3699 -- Id da Arvore Com Frutas
+local maxDist = 8
+
+local berryTreeTile = nil
+local berryTree = nil
+local berryTreePos = nil
+
+for _, tile in ipairs(g_map.getTiles(posz())) do
+  local tPos = tile:getPosition()
+  if distanceFromPlayer(tPos) <= maxDist then
+    for __, item in ipairs(tile:getItems()) do
+      if item:getId() == berryTreeId and findPath(tPos, pos()) then
+        berryTreeTile = tile
+        berryTree = item
+        berryTreePos = tPos
+        break
+      end
+    end
+  end
+end
+
+
+if not berryTree then return true end
+
+if distanceFromPlayer(berryTreePos) > 1 then
+  delay(500)
+  autoWalk(berryTreePos, 20, {precision=2})
+  return "retry"
+end
+
+g_game.use(berryTree)
+
+schedule(500, function()
+  local berry = berryTreeTile:getTopThing()
+  moveToSlot(berry, SlotBack, berry:getCount())
+end)
+
+delay(1000)
+
+return "retry"
+]])
+
+addExampleFunction("Ir treinar com Base na stamina", [[
+-- Check stamina
+local sairStamina = 42
+local sairLabel = "SairTrainer"
+local continueLabel = "ContinuarTrainer"
+
+if stamina() >= sairStamina * 60 then
+    --Made By VivoDibra
+    gotoLabel(sairLabel)
+else
+    gotoLabel(continueLabel)
+end
+
+return true
+]])
+
+addExampleFunction("Treinar off", [[
+-- Treinamento 
+local potId = 268
+
+local potion = findItem(potId)
+if not potion then
+  return true
+end
+
+say("utana vid")
+
+schedule(200, function()
+  say("exura vita")
+end)
+
+
+if manapercent() < 80 then
+  usewith(potion, player)
+end
+
+if not g_game.isAttacking() then
+  for _, spec in ipairs(getSpectators(false)) do
+    if spec:isMonster() and getDistanceBetween(pos(), spec:getPosition()) == 1 then
+      g_game.attack(spec)
+      break
+    end
+  end
+end
+
+delay(300)
+
+return "retry"
+]])
+
+addExampleFunction("Depositar grana", [[
+-- Depositar
+local barras = itemAmount(3043)
+  if not isInPz() then return end
+    if barras <= 100 then 
+       say("deposit " .. barras)
+    elseif barras > 100 then
+       say("deposit 100")
+    end
+delay(200)
+return true
+]])
+
+addExampleFunction("Usar alavanca", [[
+-- Alavanca
+schedule(1000, function()
+    local useitemlist = { 27260 } -- ID da Alavanca
+    local tiles = getNearTiles(pos())
+    for _, tile in pairs(tiles) do
+        local topThing = tile:getTopUseThing()
+        if topThing and table.find(useitemlist, topThing:getId()) then
+             g_game.use(topThing)
+        end
+    end
+end)
+]])
+
+
+addExampleFunction("Pular para o proximo char", [[
+-- Logar proximo char
+modules.client_entergame.EnterGame.openWindow()
+local rwPanel = g_ui.getRootWidget():getChildById('charactersWindow')
+local buttonsPanel = rwPanel:getChildById('characters')
+
+for i, widget in pairs(buttonsPanel:getChildren()) do
+   warn(widget:getId())
+end
+
+if buttonsPanel then
+    for i, widget in pairs(buttonsPanel:getChildren()) do
+        if (i == 1) then -- número da posição na lista de login em que o seu próximo char estará
+            buttonsPanel:focusChild(widget)
+            rwPanel:onEnter()
+        end
+    end
+end
+
+return true
+]])
+
+addExampleFunction("Vai espera pk sair", [[
+-- Esperando Pz
+if retries > 25 or not isPzLocked() then
+  return true
+else
+  if isPoisioned() then
+      say("exana pox")
+  end
+  if isPzLocked() then
+      delay(8000)
+  end
+  return "retry"
+end
+]])
+
+
+addExampleFunction("Auto resetar", [[
+-- Resetar
+schedule(1000, function()
+
+local level = player:getLevel();
+
+if (level >= 8 ) then
+
+   gotoLabel("lvl500")
+
+else
+
+    gotoLabel("Reset")
+
+end
+
+end)
+
+delay(1200)
+
+return true
+]])
+
+
+
+
+
+addExampleFunction("Mandar parcel", [[
+-- PARCEL
+
+local move_delay = 600
+
+local maxDistance = 3 -- sqms (for npc and mailbox)
+
+-- SEND CONFIG
+
+local player_name_to_send = "Mdsilva"
+
+local city_name_to_send = "Thais"
+
+-- ITEMS CONFIG
+
+local parcel_id = 140
+
+local label_id = 3507
+
+local mailbox_id = 3501
+
+-- NPC CONFIG
+
+local npcNames = {"Naji Banker","Liane","Redward"}
+
+local oldVersions = false -- true = buy by 'hi, buy parcel, yes' / false = buy by 'hi, trade'
+
+-- END CONFIG
+
+local tag = "[Send Parcel]"
+
+storage.sendParcel = storage.sendParcel or {
+
+  labelOk = false
+
+}
+
+local labelTxt = player_name_to_send.."\n"..city_name_to_send
+
+local config = storage.sendParcel
+
+local items_to_send = storage["SendParcel"].sendItems
+
+-- START FUNCTION
+
+local mailBox = findItemOnGround(mailbox_id)
+
+if not mailBox then
+
+  warn(tag.."\nMailBox not found")
+
+  config.labelOk = false
+
+  return false
+
+end
+
+local toSend = false
+
+for e, entry in pairs(items_to_send) do
+
+  if findItem(entry) then
+
+    toSend = true
+
+    break
+
+  end
+
+end
+
+if not toSend then
+
+  warn(tag.."\nNo more items to send")
+
+  config.labelOk = false
+
+  return false
+
+end
+
+local findParcel = findItem(parcel_id)
+
+local findLabel = findItem(label_id)
+
+if not findParcel or not findLabel then
+
+  -- COMPRAR PARCEL
+
+  for n, npcName in ipairs(npcNames) do
+
+    local npc = getCreatureByName(npcName)
+
+    if npc then
+
+      local npcPos = npc:getPosition()
+
+      if distanceFromPlayer(npcPos) > maxDistance then
+
+        autoWalk(npcPos, 15, {precision=maxDistance})
+
+        delay(move_delay)
+
+        return "retry"
+
+      end
+
+      if oldVersions then
+
+        local conversation = {"hi","buy parcel","yes"}
+
+        local talkDelay = 2222 -- ms
+
+        for i, msg in ipairs(conversation) do
+
+          schedule(talkDelay * (i - 1), function()
+
+            NPC.say(msg)
+
+          end)
+
+        end
+
+        delay((#conversation * talkDelay) + move_delay)
+
+        return "retry"
+
+      else
+
+        if not NPC.isTrading() then
+
+          NPC.say("hi")
+
+          NPC.say("trade")
+
+          delay(move_delay * 2)
+
+          return "retry"
+
+        else
+
+          local wait = 0
+
+          if not findParcel then
+
+            NPC.buy(parcel_id, 1)
+
+            wait = move_delay
+
+          end
+
+          if not findLabel then
+
+            schedule(wait,function()
+
+              NPC.buy(label_id, 1)
+
+            end)
+
+            wait = wait + move_delay
+
+          end
+
+          schedule(wait,function()
+
+            NPC.closeTrade()
+
+          end)
+
+          wait = wait + move_delay
+
+          delay(wait)
+
+          return "retry"
+
+        end
+
+      end
+
+    end
+
+  end
+
+  warn(tag.."\nNPC not found")
+
+  config.labelOk = false
+
+  return false 
+
+end
+
+local openParcel = getContainerByItem(parcel_id)
+
+if not openParcel then
+
+  g_game.open(findParcel,nil)
+
+  delay(move_delay)
+
+  return "retry"
+
+end
+
+-- Label
+
+if not config.labelOk then
+
+  for i, item in ipairs(openParcel:getItems()) do
+
+    if item:getId() == label_id then
+
+      g_game.use(item)
+
+      schedule(move_delay,function()
+
+        local windows = modules.game_textwindow.windows
+
+        for _, window in pairs(windows) do
+
+          window.text:setText(labelTxt)
+
+          schedule(move_delay,function()
+
+            window.okButton.onClick()
+
+            config.labelOk = true
+
+          end)
+
+        end
+
+      end)
+
+      delay(move_delay * 4)
+
+      return "retry"
+
+    end
+
+  end
+
+  g_game.move(findLabel,openParcel:getSlotPosition(openParcel:getCapacity()),1)
+
+  delay(move_delay)
+
+  return "retry"
+
+end
+
+local parcelFull = containerIsFull(openParcel)
+
+if not parcelFull then
+
+  for c, cont in pairs(getContainers()) do
+
+    if cont:getContainerItem():getId() ~= parcel_id then
+
+      for i, item in ipairs(cont:getItems()) do
+
+        if table.find(items_to_send,item:getId()) then
+
+          g_game.move(item,openParcel:getSlotPosition(openParcel:getCapacity()),item:getCount())
+
+          delay(move_delay)
+
+          return "retry"
+
+        end
+
+      end
+
+    end
+
+  end
+
+end
+
+-- last check on parcel/label
+
+local labelOk2 = false 
+
+for i, item in ipairs(openParcel:getItems()) do
+
+  if item:getId() == label_id then
+
+    labelOk2 = true
+
+    break
+
+  end
+
+end
+
+if not labelOk2 then
+
+  config.labelOk = false
+
+  return "retry"
+
+end
+
+-- SEND PARCEL
+
+local mailPos = mailBox:getPosition()
+
+local mailTile = g_map.getTile(mailPos)
+
+local topMail = mailTile:getTopUseThing()
+
+local diffDist = getDistanceBetween(pos(),mailPos)
+
+if not mailTile:canShoot() or diffDist > maxDistance then
+
+  autoWalk(mailPos, 30, {precision=1})
+
+  delay(move_delay)
+
+  return "retry"
+
+end
+
+if topMail:getId() ~= mailbox_id then
+
+  g_game.move(topMail,player:getPosition(),topMail:getCount())
+
+else
+
+  g_game.move(findParcel,mailPos,1)
+
+  config.labelOk = false
+
+  print(os.date('%H:%M ') .. player:getName() .. " - " .. tag .. ": Parcel Sent to: " .. player_name_to_send)
+
+  broadcastMessage(tag.."\nParcel Sent")
+
+end
+
+delay(move_delay)
+
+return "retry"
+]])
+
+
+addExampleFunction("Acabou Cap", [[
+-- Check Cap
+
+if freecap() <= 500 then -- si tu cap es menor a 1000 se ira al label ExitHunt si es mayor regresa a label Hunt, editable la cap x otra cantidad.
+
+    CaveBot.gotoLabel("saida") -- label que usara para salir si tu cap esta por debajo de 1000
+
+else
+
+    CaveBot.gotoLabel("minerando") -- label de inicio del hunt y label que usara para regresar si tu cap es mayor a 1000
+
+end
+
+return true
+]])
+
+
+addExampleFunction("Proxima cave", [[
+-- Proxima hunt
+CaveBot.setOff()
+
+     storage._configs.cavebot_configs.selected = 'SandCross'
+
+     CaveBot.setOn()
+
+      return true;
+]])
+
+
+
+addExampleFunction("ainda tem item?", [[
+-- Check item
+
+local goldId = 9058
+
+local minGold = 100
+
+local gold = findItem(goldId) -- procura o item
+
+local goldCount = 0
+
+if gold then
+
+  goldCount = gold.count
+
+end
+
+if goldCount >= minGold then
+
+  CaveBot.gotoLabel("compra")
+
+else
+
+  CaveBot.gotoLabel("dp")
+
+end
+
+return true
+
+]]) 
+
+addExampleFunction("Move Personagem", [[
+--- Move Personagem 
+
+
+local p = pos()
+
+-- Criar coordenada para mover 1 sqm para baixo
+
+local down = { x = p.x, y = p.y + 1, z = p.z }
+
+autoWalk(down)
+
+delay(1200)
+
+return true
+]]) 
+
+addExampleFunction("Alarme On", [[
+--- Alarme 
+playSound("/sounds/alarm.ogg")
+return true
+]]) 
+
+addExampleFunction("ainda tem item?", [[
+--- Quantos Mob falta
+
+local gotokills = 4000
+
+onTextMessage(function(mode, text)
+    -- Captura números de exp e kills
+    local data = regexMatch(text, "Pyre Dragon defeated%. You gained %+(%d+) prey experience%. (%d+) kills remaining%.")[1]
+
+    if data and #data > 0 then
+        local exp  = tonumber(data[2])
+        local kills = tonumber(data[3])
+
+        if kills == 0 then
+            CaveBot.gotoLabel("Cave")
+        end
+    end
+end)
+]])
+addExampleFunction("Equip item", [[
+--- equipamento
+
+equipItems()
+
+return true
+]])
+
+addExampleFunction("Attack para treinar", [[
+--- attack ON
+Mdscriptatack.setOn() <---- mude o On Para Off caso queira usar a function para desligar o attack
+
+return true
+]])
+
+----
+
+----
+
+local cavebotMacro = nil
+local config = nil
+
+-- ui
+local configWidget = UI.Config(leftPanel)
+local ui = UI.createWidget("CaveBotPanel",leftPanel)
+
+ui.list = ui.listPanel.list -- shortcut
+CaveBot.actionList = ui.list
+
+if CaveBot.Editor then
+  CaveBot.Editor.setup(leftPanel)
+end
+if CaveBot.Config then
+  CaveBot.Config.setup(leftPanel)
+end
+for extension, callbacks in pairs(CaveBot.Extensions) do
+  if callbacks.setup then
+    callbacks.setup(leftPanel)
+  end
+end
+
+-- main loop, controlled by config
+local actionRetries = 0
+local prevActionResult = true
+cavebotMacro = macro(20, function()
+  if TargetBot and TargetBot.isActive() and not TargetBot.isCaveBotActionAllowed() then
+    CaveBot.resetWalking()
+    return -- target bot or looting is working, wait
+  end
+  
+  if CaveBot.doWalking() then
+    return -- executing walking
+  end
+  
+  local actions = ui.list:getChildCount()
+  if actions == 0 then return end
+  local currentAction = ui.list:getFocusedChild()
+  if not currentAction then
+    currentAction = ui.list:getFirstChild()
+  end
+  local action = CaveBot.Actions[currentAction.action]  
+  local value = currentAction.value
+  local retry = false
+  if action then
+    local status, result = pcall(function()
+      CaveBot.resetWalking()
+      return action.callback(value, actionRetries, prevActionResult)
+    end)
+    if status then
+      if result == "retry" then
+        actionRetries = actionRetries + 1
+        retry = true
+      elseif type(result) == 'boolean' then
+        actionRetries = 0
+        prevActionResult = result
+      else
+        warn("Invalid return from cavebot action (" .. currentAction.action .. "), should be \"retry\", false or true, is: " .. tostring(result))
+      end
+    else
+      warn("warn while executing cavebot action (" .. currentAction.action .. "):\n" .. result)
+    end    
+  else
+    warn("Invalid cavebot action: " .. currentAction.action)
+  end
+  
+  if retry then
+    return
+  end
+  
+  if currentAction ~= ui.list:getFocusedChild() then
+    -- focused child can change durring action, get it again and reset state
+    currentAction = ui.list:getFocusedChild() or ui.list:getFirstChild()
+    actionRetries = 0
+    prevActionResult = true
+  end
+  local nextAction = ui.list:getChildIndex(currentAction) + 1
+  if nextAction > actions then
+    nextAction = 1
+  end
+  ui.list:focusChild(ui.list:getChildByIndex(nextAction))
+end,leftPanel)
+
+-- config, its callback is called immediately, data can be nil
+local lastConfig = ""
+config = Config.setup("cavebot_configs", configWidget, "cfg", function(name, enabled, data)
+  if enabled and CaveBot.Recorder.isOn() then
+    CaveBot.Recorder.disable()
+    CaveBot.setOff()
+    return    
+  end
+
+  local currentActionIndex = ui.list:getChildIndex(ui.list:getFocusedChild())
+  ui.list:destroyChildren()
+  if not data then return cavebotMacro.setOff() end
+  
+  local cavebotConfig = nil
+  for k,v in ipairs(data) do
+    if type(v) == "table" and #v == 2 then
+      if v[1] == "config" then
+        local status, result = pcall(function()
+          return json.decode(v[2])
+        end)
+        if not status then
+          warn("warn while parsing CaveBot extensions from config:\n" .. result)
+        else
+          cavebotConfig = result
+        end
+      elseif v[1] == "extensions" then
+        local status, result = pcall(function()
+          return json.decode(v[2])
+        end)
+        if not status then
+          warn("warn while parsing CaveBot extensions from config:\n" .. result)
+        else
+          for extension, callbacks in pairs(CaveBot.Extensions) do
+            if callbacks.onConfigChange then
+              callbacks.onConfigChange(name, enabled, result[extension])
+            end
+          end
+        end
+      else
+        CaveBot.addAction(v[1], v[2])
+      end
+    end
+  end
+
+  CaveBot.Config.onConfigChange(name, enabled, cavebotConfig)
+  
+  actionRetries = 0
+  CaveBot.resetWalking()
+  prevActionResult = true
+  cavebotMacro.setOn(enabled)
+  cavebotMacro.delay = nil
+  if lastConfig == name then 
+    -- restore focused child on the action list
+    ui.list:focusChild(ui.list:getChildByIndex(currentActionIndex))
+  end
+  lastConfig = name  
+end,leftPanel)
+
+-- ui callbacks
+if CaveBot.Editor then
+  CaveBot.Editor.show()
+end
+
+if CaveBot.Config then
+  CaveBot.Config.show()
+end
+
+
+-- public function, you can use them in your scripts
+CaveBot.isOn = function()
+  return config.isOn()
+end
+
+CaveBot.isOff = function()
+  return config.isOff()
+end
+
+CaveBot.setOn = function(val)
+  if val == false then  
+    return CaveBot.setOff(true)
+  end
+  config.setOn()
+end
+
+CaveBot.setOff = function(val)
+  if val == false then  
+    return CaveBot.setOn(true)
+  end
+  config.setOff()
+end
+
+CaveBot.delay = function(value)
+  cavebotMacro.delay = math.max(cavebotMacro.delay or 0, now + value)
+end
+
+CaveBot.gotoLabel = function(label)
+  label = label:lower()
+  for index, child in ipairs(ui.list:getChildren()) do
+    if child.action == "label" and child.value:lower() == label then    
+      ui.list:focusChild(child)
+      return true
+    end
+  end
+  return false
+end
+
+CaveBot.save = function(leftPanel)
+  local data = {}
+  for index, child in ipairs(ui.list:getChildren()) do
+    table.insert(data, {child.action, child.value})
+  end
+  
+  if CaveBot.Config then
+    table.insert(data, {"config", json.encode(CaveBot.Config.save())})
+  end
+  
+  local extension_data = {}
+  for extension, callbacks in pairs(CaveBot.Extensions) do
+    if callbacks.onSave then
+      local ext_data = callbacks.onSave()
+      if type(ext_data) == "table" then
+        extension_data[extension] = ext_data
+      end
+    end
+  end
+  table.insert(data, {"extensions", json.encode(extension_data, 2)})
+  config.save(data)
+end
+     
+
+--------------------------------------
+-------------------------------------
+
+--------
+
+-- Garantir que a config exista
+if not SuppliesConfig then
+  SuppliesConfig = {}
+end
+
+-- Fallback para vBotConfigSave (algumas versões não possuem)
+if not vBotConfigSave then
+  function vBotConfigSave(name)
+    if storage then
+      storage[name] = storage[name] or true
+    end
+  end
+end
+local panelName = "supplies"
+if not SuppliesConfig[panelName] or SuppliesConfig[panelName].item1 then
+  SuppliesConfig[panelName] = {
+    currentProfile = "Default",
+    ["Default"] = {}
+  }
+end
+
+local function convertOldConfig(config)
+  if config and config.items then
+    return config
+  end -- config is new
+
+  local newConfig = {
+    items = {},
+    capSwitch = config.capSwitch,
+	capLvlSwitch = config.capLvlSwitch,
+    SoftBoots = config.SoftBoots,
+    imbues = config.imbues,
+    staminaSwitch = config.staminaSwitch,
+	levelResetSwitch = config.levelResetSwitch,
+	comboTimeSwitch = config.comboTimeSwitch,
+    comboTimeValue = config.comboTimeValue,
+    capValue = config.capValue,
+	capLvlValue = config.capLvlValue,
+    staminaValue = config.staminaValue,
+	staminaMaxValue = config.staminaMaxValue,
+	levelResetValue = config.levelResetValue
+  }
+
+  local items = {
+    config.item1,
+    config.item2,
+    config.item3,
+    config.item4,
+    config.item5,
+    config.item6
+  }
+  local mins = {
+    config.item1Min,
+    config.item2Min,
+    config.item3Min,
+    config.item4Min,
+    config.item5Min,
+    config.item6Min
+  }
+  local maxes = {
+    config.item1Max,
+    config.item2Max,
+    config.item3Max,
+    config.item4Max,
+    config.item5Max,
+    config.item6Max
+  }
+
+  for i, item in ipairs(items) do
+    if item > 100 then
+      local min = mins[i]
+      local max = maxes[i]
+      newConfig.items[tostring(item)] = {
+        min = min,
+        max = max,
+        avg = 0
+      }
+    end
+  end
+
+  return newConfig
+end
+
+-- convert old configs
+for k, profile in pairs(SuppliesConfig[panelName]) do
+  if type(profile) == 'table' then
+    SuppliesConfig[panelName][k] = convertOldConfig(profile)
+  end
+end
+
+local currentProfile = SuppliesConfig[panelName].currentProfile
+local config = SuppliesConfig[panelName][currentProfile]
+
+vBotConfigSave("supply")
+
+if not config then
+  for k, v in pairs(SuppliesConfig[panelName]) do
+    if type(v) == "table" then
+      SuppliesConfig[panelName].currentProfile = k
+      config = SuppliesConfig[panelName][k]
+      break
+    end
+  end
+end
+
+function getEmptyItemPanels()
+  local panel = SuppliesWindow.items
+  local count = 0
+
+  for i, child in ipairs(panel:getChildren()) do
+    count = child:getId() == "blank" and count + 1 or count
+  end
+
+  return count
+end
+
+function deleteFirstEmptyPanel()
+  local panel = SuppliesWindow.items
+
+  for i, child in ipairs(panel:getChildren()) do
+    if child:getId() == "blank" then
+      child:destroy()
+      break
+    end
+  end
+end
+
+function clearEmptyPanels()
+  local panel = SuppliesWindow.items
+
+  if panel:getChildCount() > 1 then
+    if getEmptyItemPanels() > 1 then
+      deleteFirstEmptyPanel()
+    end
+  end
+end
+
+function addItemPanel()
+  local parent = SuppliesWindow.items
+  local childs = parent:getChildCount()
+  local panel = UI.createWidget("ItemPanel", parent)
+  local item = panel.id
+  local min = panel.min
+  local max = panel.max
+  local avg = panel.avg
+
+  panel:setId("blank")
+  item:setShowCount(false)
+
+  item.onItemChange = function(widget)
+    local id = widget:getItemId()
+    local panelId = panel:getId()
+
+    -- empty, verify
+    if id < 100 then
+      config.items[panelId] = nil
+      panel:setId("blank")
+      clearEmptyPanels() -- clear empty panels if any
+      return
+    end
+
+    -- itemId was not changed, ignore
+    if tonumber(panelId) == id then
+      return
+    end
+
+    -- check if isnt already added
+    if config[tostring(id)] then
+      warn("vBot[Drop Tracker]: Item already added!")
+      widget:setItemId(0)
+      return
+    end
+
+    -- new item id
+    config.items[tostring(id)] = config.items[tostring(id)] or {} -- min, max, avg
+    panel:setId(id)
+    addItemPanel() -- add new panel
+  end
+
+  return panel
+end
+
+SuppliesWindow = UI.createWindow("SuppliesWindow")
+SuppliesWindow:hide()
+
+UI.Button(
+  "Supply Settings",
+  function()
+    SuppliesWindow:setVisible(not SuppliesWindow:isVisible())
+  end
+,rightPanel)
+
+-- load settings
+local function loadSettings()
+  -- panels
+  SuppliesWindow.items:destroyChildren()
+
+  for id, data in pairs(config.items) do
+    local widget = addItemPanel()
+    widget:setId(id)
+    widget.id:setItemId(tonumber(id))
+    widget.min:setText(data.min)
+    widget.max:setText(data.max)
+    widget.avg:setText(data.avg)
+  end
+  addItemPanel() -- add empty panel
+
+  -- switches and values
+  SuppliesWindow.capSwitch:setOn(config.capSwitch or false)
+  SuppliesWindow.capLvlSwitch:setOn(config.capLvlSwitch or false)
+  SuppliesWindow.SoftBoots:setOn(config.SoftBoots or false)
+  SuppliesWindow.imbues:setOn(config.imbues or false)
+  SuppliesWindow.staminaSwitch:setOn(config.staminaSwitch or false)
+  SuppliesWindow.levelResetSwitch:setOn(config.levelResetSwitch or false)
+  SuppliesWindow.comboTimeSwitch:setOn(config.comboTimeSwitch or false)
+  SuppliesWindow.capValue:setText(config.capValue or 0)
+  SuppliesWindow.capLvlValue:setText(config.capLvlValue or 0)
+  SuppliesWindow.staminaValue:setText(config.staminaValue and config.staminaValue/60 or 0)
+  SuppliesWindow.comboTimeValue:setText(config.comboTimeValue or 0)
+  SuppliesWindow.staminaMaxValue:setText(config.staminaValue and config.staminaMaxValue/60 or 0)
+  SuppliesWindow.levelResetValue:setText(config.levelResetValue or 0)
+  
+end
+loadSettings()
+
+-- save settings
+SuppliesWindow.onVisibilityChange = function(widget, visible)
+  if not visible then
+    local currentProfile = SuppliesConfig[panelName].currentProfile
+    SuppliesConfig[panelName][currentProfile].items = {}
+    local parent = SuppliesWindow.items
+
+    -- items
+    for i, panel in ipairs(parent:getChildren()) do
+      if panel.id:getItemId() > 100 then
+        local id = tostring(panel.id:getItemId())
+        local min = panel.min:getValue()
+        local max = panel.max:getValue()
+        local avg = panel.avg:getValue()
+
+        SuppliesConfig[panelName][currentProfile].items[id] = {
+          min = min,
+          max = max,
+          avg = avg
+        }
+      end
+    end
+
+    vBotConfigSave("supply")
+  end
+end
+
+local function refreshProfileList()
+  local profiles = SuppliesConfig[panelName]
+
+  SuppliesWindow.profiles:destroyChildren()
+  for k, v in pairs(profiles) do
+    if type(v) == "table" then
+      local label = UI.createWidget("ProfileLabel", SuppliesWindow.profiles)
+      label:setText(k)
+      label:setTooltip("Click to load this profile. \nDouble click to change the name.")
+      label.remove.onClick = function()
+        local childs = SuppliesWindow.profiles:getChildCount()
+        if childs == 1 then
+          return info("vBot[Supplies] You need at least one profile!")
+        end
+        profiles[k] = nil
+        label:destroy()
+        vBotConfigSave("supply")
+      end
+      label.onDoubleClick = function(widget)
+        local window =
+          modules.client_textedit.show(
+          widget,
+          {title = "Set Profile Name", description = "Enter a new name for selected profile"}
+        )
+        schedule(
+          50,
+          function()
+            window:raise()
+            window:focus()
+          end
+        )
+      end
+      label.onClick = function()
+        SuppliesConfig[panelName].currentProfile = label:getText()
+        config = SuppliesConfig[panelName][label:getText()]
+        loadSettings()
+        vBotConfigSave("supply")
+      end
+      label.onTextChange = function(widget, text)
+        currentProfile = text
+        SuppliesConfig[panelName].currentProfile = text
+        profiles[text] = profiles[k]
+        profiles[k] = nil
+        vBotConfigSave("supply")
+      end
+    end
+  end
+end
+refreshProfileList()
+
+local function setProfileFocus()
+  for i, v in ipairs(SuppliesWindow.profiles:getChildren()) do
+    local name = v:getText()
+    if name == SuppliesConfig[panelName].currentProfile then
+      return v:focus()
+    end
+  end
+end
+setProfileFocus()
+
+SuppliesWindow.newProfile.onClick = function()
+  local n = SuppliesWindow.profiles:getChildCount()
+  if n > 60 then
+    return info("vBot[Supplies] - max profile count reached!")
+  end
+  local name = "Profile #" .. n + 1
+  while SuppliesConfig[panelName][name] ~= nil do
+    n = n + 1
+    name = "Profile #" .. n + 1
+  end
+  SuppliesConfig[panelName][name] = {items = {}}
+  refreshProfileList()
+  setProfileFocus()
+  vBotConfigSave("supply")
+end
+
+SuppliesWindow.capSwitch.onClick = function(widget)
+  config.capSwitch = not config.capSwitch
+  widget:setOn(config.capSwitch)
+end
+
+SuppliesWindow.comboTimeSwitch.onClick = function(widget)
+  config.comboTimeSwitch = not config.comboTimeSwitch
+  widget:setOn(config.comboTimeSwitch)
+end
+
+SuppliesWindow.capLvlSwitch.onClick = function(widget)
+  config.capLvlSwitch = not config.capLvlSwitch
+  widget:setOn(config.capLvlSwitch)
+end
+
+SuppliesWindow.SoftBoots.onClick = function(widget)
+  config.SoftBoots = not config.SoftBoots
+  widget:setOn(config.SoftBoots)
+end
+
+SuppliesWindow.imbues.onClick = function(widget)
+  config.imbues = not config.imbues
+  widget:setOn(config.imbues)
+end
+
+SuppliesWindow.staminaSwitch.onClick = function(widget)
+  config.staminaSwitch = not config.staminaSwitch
+  widget:setOn(config.staminaSwitch)
+end
+
+SuppliesWindow.levelResetSwitch.onClick = function(widget)
+  config.levelResetSwitch = not config.levelResetSwitch
+  widget:setOn(config.levelResetSwitch)
+end
+
+SuppliesWindow.capValue.onTextChange = function(widget, text)
+  local value = tonumber(SuppliesWindow.capValue:getText())
+  if not value then
+    SuppliesWindow.capValue:setText(0)
+    config.capValue = 0
+  else
+    text = text:match("0*(%d+)")
+    config.capValue = text
+  end
+end
+
+SuppliesWindow.capLvlValue.onTextChange = function(widget, text)
+  local value = tonumber(SuppliesWindow.capLvlValue:getText())
+  if not value then
+    SuppliesWindow.capLvlValue:setText(0)
+    config.capLvlValue = 0
+  else
+    text = text:match("0*(%d+)")
+    config.capLvlValue = text
+  end
+end
+
+SuppliesWindow.staminaValue.onTextChange = function(widget, text)
+  local value = tonumber(SuppliesWindow.staminaValue:getText())
+  if not value then
+    SuppliesWindow.staminaValue:setText(0)
+    config.staminaValue = 0
+  else
+    text = text:match("0*(%d+)")
+    config.staminaValue = text * 60
+  end
+end
+
+
+SuppliesWindow.comboTimeValue.onTextChange = function(widget, text)
+  local value = tonumber(SuppliesWindow.comboTimeValue:getText())
+  if not value then
+    SuppliesWindow.comboTimeValue:setText(0)
+    config.comboTimeValue = 0
+  else
+    text = text:match("0*(%d+)")
+    config.comboTimeValue = text
+  end
+end
+
+SuppliesWindow.staminaMaxValue.onTextChange = function(widget, text)
+  local value = tonumber(SuppliesWindow.staminaMaxValue:getText())
+  if not value then
+    SuppliesWindow.staminaMaxValue:setText(0)
+    config.staminaMaxValue = 0
+  else
+    text = text:match("0*(%d+)")
+    config.staminaMaxValue = text * 60
+  end
+end
+
+SuppliesWindow.levelResetValue.onTextChange = function(widget, text)
+  local value = tonumber(SuppliesWindow.levelResetValue:getText())
+  if not value then
+    SuppliesWindow.levelResetValue:setText(0)
+    config.levelResetValue = 0
+  else
+    text = text:match("0*(%d+)")
+    config.levelResetValue = text
+  end
+end
+
+SuppliesWindow.increment.onClick = function(widget)
+  for i, panel in ipairs(SuppliesWindow.items:getChildren()) do
+    if panel.id:getItemId() > 100 then
+      local max = panel.max:getValue()
+      local avg = panel.avg:getValue()
+
+      if avg > 0 then
+        panel.max:setText(max + avg)
+      end
+    end
+  end
+end
+
+SuppliesWindow.decrement.onClick = function(widget)
+  for i, panel in ipairs(SuppliesWindow.items:getChildren()) do
+    if panel.id:getItemId() > 100 then
+      local max = panel.max:getValue()
+      local avg = panel.avg:getValue()
+
+      if avg > 0 then
+        panel.max:setText(math.max(0, max - avg)) -- dont go below 0
+      end
+    end
+  end
+end
+
+SuppliesWindow.increment.onMouseWheel = function(widget, mousePos, dir)
+  if dir == 1 then
+    SuppliesWindow.increment.onClick()
+  elseif dir == 2 then
+    SuppliesWindow.decrement.onClick()
+  end
+end
+
+SuppliesWindow.decrement.onMouseWheel = SuppliesWindow.increment.onMouseWheel
+
+Supplies = {} -- public functions
+Supplies.show = function()
+  SuppliesWindow:show()
+  SuppliesWindow:raise()
+  SuppliesWindow:focus()
+end
+
+Supplies.getItemsData = function()
+  local t = {}
+  -- items
+  for i, panel in ipairs(SuppliesWindow.items:getChildren()) do
+    if panel.id:getItemId() > 100 then
+      local id = tostring(panel.id:getItemId())
+      local min = panel.min:getValue()
+      local max = panel.max:getValue()
+      local avg = panel.avg:getValue()
+
+      t[id] = {
+        min = min,
+        max = max,
+        avg = avg
+      }
+    end
+  end
+
+  return t
+end
+
+Supplies.isSupplyItem = function(id)
+  local data = Supplies.getItemsData()
+  id = tostring(id)
+
+  if data[id] then
+    return data[id]
+  else
+    return false
+  end
+end
+
+Supplies.hasEnough = function()
+  local data = Supplies.getItemsData()
+
+  for id, values in pairs(data) do
+    id = tonumber(id)
+    local minimum = values.min
+    local current = player:getItemsCount(id) or 0
+
+    if current < minimum then
+      return {id=id, amount=current}
+    end
+  end
+
+  return true
+end
+
+hasSupplies = Supplies.hasEnough
+
+Supplies.setAverageValues = function(data)
+  for id, amount in pairs(data) do
+    local widget = SuppliesWindow.items[id]
+
+    if widget then
+      widget.avg:setText(amount)
+    end
+  end
+end
+
+Supplies.addSupplyItem = function(id, min, max, avg)
+  if not id then
+    return
+  end
+  -- by F.Almeida
+  local pro = SuppliesConfig[panelName].currentProfile
+  SuppliesConfig[panelName][pro]["items"][tostring(id)] = {min = min, max = max, avg = avg}
+  vBotConfigSave("supply")
+  loadSettings()
+  refreshProfileList()
+  setProfileFocus()
+end
+
+Supplies.getAdditionalData = function()
+  local data = {
+    stamina = {enabled = config.staminaSwitch, value = config.staminaValue},
+	staminaMax = {enabled = config.staminaMaxSwitch, value = config.staminaMaxValue},
+	levelReset = {enabled = config.levelResetSwitch, value = config.levelResetValue},
+    capacity = {enabled = config.capSwitch, value = config.capValue},
+	capacityLvl = {enabled = config.capLvlSwitch, value = config.capLvlValue},
+	comboTime = {enabled = config.comboTimeSwitch, value = config.comboTimeValue},
+    softBoots = {enabled = config.SoftBoots},
+    imbues = {enabled = config.imbues}
+  }
+  return data
+end
+
+Supplies.getFullData = function()
+  local data = {
+    items = Supplies.getItemsData(),
+    additional = Supplies.getAdditionalData()
+  }
+  
+  return data
+end
+
+-- by F.Almeida
+Supplies.changeProfile = function(profile)
+  if not SuppliesConfig[panelName][profile] then
+    return warn("[Supplies] Profile not found")
+  end
+  SuppliesConfig[panelName].currentProfile = profile
+  currentProfile = SuppliesConfig[panelName].currentProfile
+  config = SuppliesConfig[panelName][currentProfile]
+  loadSettings()
+  refreshProfileList()
+  setProfileFocus()
+end
+
+Supplies.createProfile = function(profileName)
+  if SuppliesConfig[panelName][profileName] then
+    return warn("[Supplies] Profile already exists")
+  end
+  SuppliesConfig[panelName][profileName] = {items = {}}
+  vBotConfigSave("supply")
+end
+
+
+----------------------
+
+
+
+
+
+local panelName = "supplies"
+if not SuppliesConfig[panelName] or SuppliesConfig[panelName].item1 then
+  SuppliesConfig[panelName] = {
+    currentProfile = "Default",
+    ["Default"] = {}
+  }
+end
+
+
+local function convertOldConfig(config)
+  if config and config.items then
+    return config
+  end -- config is new
+
+  local newConfig = {
+    items = {},
+    capSwitch = config.capSwitch,
+    capLvlSwitch = config.capLvlSwitch,
+    SoftBoots = config.SoftBoots,
+    imbues = config.imbues,
+    staminaSwitch = config.staminaSwitch,
+    levelResetSwitch = config.levelResetSwitch,
+    comboTimeSwitch = config.comboTimeSwitch,
+    comboTimeValue = config.comboTimeValue,
+    capValue = config.capValue,
+    capLvlValue = config.capLvlValue,
+    staminaValue = config.staminaValue,
+    staminaMaxValue = config.staminaMaxValue,
+    levelResetValue = config.levelResetValue
+  }
+
+  local items = {
+    config.item1,
+    config.item2,
+    config.item3,
+    config.item4,
+    config.item5,
+    config.item6
+  }
+  local mins = {
+    config.item1Min,
+    config.item2Min,
+    config.item3Min,
+    config.item4Min,
+    config.item5Min,
+    config.item6Min
+  }
+  local maxes = {
+    config.item1Max,
+    config.item2Max,
+    config.item3Max,
+    config.item4Max,
+    config.item5Max,
+    config.item6Max
+  }
+
+  for i, item in ipairs(items) do
+    if item > 100 then
+      local min = mins[i]
+      local max = maxes[i]
+      newConfig.items[tostring(item)] = {
+        min = min,
+        max = max,
+        avg = 0
+      }
+    end
+  end
+
+  return newConfig
+end
+
+-- convert old configs
+for k, profile in pairs(SuppliesConfig[panelName]) do
+  if type(profile) == 'table' then
+    SuppliesConfig[panelName][k] = convertOldConfig(profile)
+  end
+end
+
+local currentProfile = SuppliesConfig[panelName].currentProfile
+local config = SuppliesConfig[panelName][currentProfile]
+
+vBotConfigSave("supply")
+
+if not config then
+  for k, v in pairs(SuppliesConfig[panelName]) do
+    if type(v) == "table" then
+      SuppliesConfig[panelName].currentProfile = k
+      config = SuppliesConfig[panelName][k]
+      break
+    end
+  end
+end
+
+-- UI Functions
+function getEmptyItemPanels()
+  local panel = SuppliesWindow.items
+  local count = 0
+  for i, child in ipairs(panel:getChildren()) do
+    count = child:getId() == "blank" and count + 1 or count
+  end
+  return count
+end
+
+function deleteFirstEmptyPanel()
+  local panel = SuppliesWindow.items
+  for i, child in ipairs(panel:getChildren()) do
+    if child:getId() == "blank" then
+      child:destroy()
+      break
+    end
+  end
+end
+
+function clearEmptyPanels()
+  local panel = SuppliesWindow.items
+  if panel:getChildCount() > 1 then
+    if getEmptyItemPanels() > 1 then
+      deleteFirstEmptyPanel()
+    end
+  end
+end
+
+function addItemPanel()
+  local parent = SuppliesWindow.items
+  local panel = UI.createWidget("ItemPanel", parent)
+  local item = panel.id
+  local min = panel.min
+  local max = panel.max
+  local avg = panel.avg
+
+  panel:setId("blank")
+  item:setShowCount(false)
+
+  item.onItemChange = function(widget)
+    local id = widget:getItemId()
+    local panelId = panel:getId()
+
+    if id < 100 then
+      config.items[panelId] = nil
+      panel:setId("blank")
+      clearEmptyPanels()
+      return
+    end
+
+    if tonumber(panelId) == id then
+      return
+    end
+
+    if config.items[tostring(id)] then
+      warn("vBot[Drop Tracker]: Item already added!")
+      widget:setItemId(0)
+      return
+    end
+
+    config.items[tostring(id)] = config.items[tostring(id)] or {}
+    panel:setId(id)
+    addItemPanel()
+  end
+
+  return panel
+end
+
+SuppliesWindow = UI.createWindow("SuppliesWindow")
+SuppliesWindow:hide()
+
+
+-- Load settings
+local function loadSettings()
+  SuppliesWindow.items:destroyChildren()
+  for id, data in pairs(config.items) do
+    local widget = addItemPanel()
+    widget:setId(id)
+    widget.id:setItemId(tonumber(id))
+    widget.min:setText(data.min)
+    widget.max:setText(data.max)
+    widget.avg:setText(data.avg)
+  end
+  addItemPanel() -- empty panel
+
+  SuppliesWindow.capSwitch:setOn(config.capSwitch or false)
+  SuppliesWindow.capLvlSwitch:setOn(config.capLvlSwitch or false)
+  SuppliesWindow.SoftBoots:setOn(config.SoftBoots or false)
+  SuppliesWindow.imbues:setOn(config.imbues or false)
+  SuppliesWindow.staminaSwitch:setOn(config.staminaSwitch or false)
+  SuppliesWindow.levelResetSwitch:setOn(config.levelResetSwitch or false)
+  SuppliesWindow.comboTimeSwitch:setOn(config.comboTimeSwitch or false)
+  SuppliesWindow.capValue:setText(config.capValue or 0)
+  SuppliesWindow.capLvlValue:setText(config.capLvlValue or 0)
+  SuppliesWindow.staminaValue:setText(config.staminaValue and config.staminaValue/60 or 0)
+  SuppliesWindow.comboTimeValue:setText(config.comboTimeValue or 0)
+  SuppliesWindow.staminaMaxValue:setText(config.staminaValue and config.staminaMaxValue/60 or 0)
+  SuppliesWindow.levelResetValue:setText(config.levelResetValue or 0)
+end
+loadSettings()
+
+-- Save settings on window hide
+SuppliesWindow.onVisibilityChange = function(widget, visible)
+  if not visible then
+    local currentProfile = SuppliesConfig[panelName].currentProfile
+    SuppliesConfig[panelName][currentProfile].items = {}
+    local parent = SuppliesWindow.items
+    for i, panel in ipairs(parent:getChildren()) do
+      if panel.id:getItemId() > 100 then
+        local id = tostring(panel.id:getItemId())
+        local min = panel.min:getValue()
+        local max = panel.max:getValue()
+        local avg = panel.avg:getValue()
+        SuppliesConfig[panelName][currentProfile].items[id] = {
+          min = min,
+          max = max,
+          avg = avg
+        }
+      end
+    end
+    vBotConfigSave("supply")
+  end
+end
+
+-- Profile handling
+local function refreshProfileList()
+  local profiles = SuppliesConfig[panelName]
+  SuppliesWindow.profiles:destroyChildren()
+  for k, v in pairs(profiles) do
+    if type(v) == "table" then
+      local label = UI.createWidget("ProfileLabel", SuppliesWindow.profiles)
+      label:setText(k)
+      label:setTooltip("Click to load this profile. \nDouble click to change the name.")
+      label.remove.onClick = function()
+        local childs = SuppliesWindow.profiles:getChildCount()
+        if childs == 1 then
+          return info("vBot[Supplies] You need at least one profile!")
+        end
+        profiles[k] = nil
+        label:destroy()
+        vBotConfigSave("supply")
+      end
+      label.onDoubleClick = function(widget)
+        local window =
+          modules.client_textedit.show(
+          widget,
+          {title = "Set Profile Name", description = "Enter a new name for selected profile"}
+        )
+        schedule(
+          50,
+          function()
+            window:raise()
+            window:focus()
+          end
+        )
+      end
+      label.onClick = function()
+        SuppliesConfig[panelName].currentProfile = label:getText()
+        config = SuppliesConfig[panelName][label:getText()]
+        loadSettings()
+        vBotConfigSave("supply")
+      end
+      label.onTextChange = function(widget, text)
+        currentProfile = text
+        SuppliesConfig[panelName].currentProfile = text
+        profiles[text] = profiles[k]
+        profiles[k] = nil
+        vBotConfigSave("supply")
+      end
+    end
+  end
+end
+refreshProfileList()
+
+local function setProfileFocus()
+  for i, v in ipairs(SuppliesWindow.profiles:getChildren()) do
+    local name = v:getText()
+    if name == SuppliesConfig[panelName].currentProfile then
+      return v:focus()
+    end
+  end
+end
+setProfileFocus()
+
+SuppliesWindow.newProfile.onClick = function()
+  local n = SuppliesWindow.profiles:getChildCount()
+  if n > 60 then
+    return info("vBot[Supplies] - max profile count reached!")
+  end
+  local name = "Profile #" .. n + 1
+  while SuppliesConfig[panelName][name] ~= nil do
+    n = n + 1
+    name = "Profile #" .. n + 1
+  end
+  SuppliesConfig[panelName][name] = {items = {}}
+  refreshProfileList()
+  setProfileFocus()
+  vBotConfigSave("supply")
+end
+
+-- Switches
+SuppliesWindow.capSwitch.onClick = function(widget)
+  config.capSwitch = not config.capSwitch
+  widget:setOn(config.capSwitch)
+end
+
+SuppliesWindow.comboTimeSwitch.onClick = function(widget)
+  config.comboTimeSwitch = not config.comboTimeSwitch
+  widget:setOn(config.comboTimeSwitch)
+end
+
+SuppliesWindow.capLvlSwitch.onClick = function(widget)
+  config.capLvlSwitch = not config.capLvlSwitch
+  widget:setOn(config.capLvlSwitch)
+end
+
+SuppliesWindow.SoftBoots.onClick = function(widget)
+  config.SoftBoots = not config.SoftBoots
+  widget:setOn(config.SoftBoots)
+end
+
+SuppliesWindow.imbues.onClick = function(widget)
+  config.imbues = not config.imbues
+  widget:setOn(config.imbues)
+end
+
+SuppliesWindow.staminaSwitch.onClick = function(widget)
+  config.staminaSwitch = not config.staminaSwitch
+  widget:setOn(config.staminaSwitch)
+end
+
+SuppliesWindow.levelResetSwitch.onClick = function(widget)
+  config.levelResetSwitch = not config.levelResetSwitch
+  widget:setOn(config.levelResetSwitch)
+end
+
+-- Value change handlers
+SuppliesWindow.capValue.onTextChange = function(widget, text)
+  local value = tonumber(text) or 0
+  config.capValue = value
+  SuppliesWindow.capValue:setText(value)
+end
+
+SuppliesWindow.capLvlValue.onTextChange = function(widget, text)
+  local value = tonumber(text) or 0
+  config.capLvlValue = value
+  SuppliesWindow.capLvlValue:setText(value)
+end
+
+SuppliesWindow.staminaValue.onTextChange = function(widget, text)
+  local value = tonumber(text) or 0
+  config.staminaValue = value * 60
+end
+
+SuppliesWindow.comboTimeValue.onTextChange = function(widget, text)
+  local value = tonumber(text) or 0
+  config.comboTimeValue = value
+end
+
+SuppliesWindow.staminaMaxValue.onTextChange = function(widget, text)
+  local value = tonumber(text) or 0
+  config.staminaMaxValue = value * 60
+end
+
+SuppliesWindow.levelResetValue.onTextChange = function(widget, text)
+  local value = tonumber(text) or 0
+  config.levelResetValue = value
+end
+
+-- Increment/decrement buttons
+SuppliesWindow.increment.onClick = function(widget)
+  for i, panel in ipairs(SuppliesWindow.items:getChildren()) do
+    if panel.id:getItemId() > 100 then
+      local max = panel.max:getValue()
+      local avg = panel.avg:getValue()
+      if avg > 0 then
+        panel.max:setText(max + avg)
+      end
+    end
+  end
+end
+
+SuppliesWindow.decrement.onClick = function(widget)
+  for i, panel in ipairs(SuppliesWindow.items:getChildren()) do
+    if panel.id:getItemId() > 100 then
+      local max = panel.max:getValue()
+      local avg = panel.avg:getValue()
+      if avg > 0 then
+        panel.max:setText(math.max(0, max - avg))
+      end
+    end
+  end
+end
+
+SuppliesWindow.increment.onMouseWheel = function(widget, mousePos, dir)
+  if dir == 1 then
+    SuppliesWindow.increment.onClick()
+  elseif dir == 2 then
+    SuppliesWindow.decrement.onClick()
+  end
+end
+
+SuppliesWindow.decrement.onMouseWheel = SuppliesWindow.increment.onMouseWheel
+
+-- Supplies Public Functions
+Supplies = {}
+Supplies.show = function()
+  SuppliesWindow:show()
+  SuppliesWindow:raise()
+  SuppliesWindow:focus()
+end
+
+Supplies.getItemsData = function()
+  local t = {}
+  for i, panel in ipairs(SuppliesWindow.items:getChildren()) do
+    if panel.id:getItemId() > 100 then
+      local id = tostring(panel.id:getItemId())
+      local min = panel.min:getValue()
+      local max = panel.max:getValue()
+      local avg = panel.avg:getValue()
+      t[id] = {min = min, max = max, avg = avg}
+    end
+  end
+  return t
+end
+
+Supplies.isSupplyItem = function(id)
+  local data = Supplies.getItemsData()
+  return data[tostring(id)] or false
+end
+
+Supplies.hasEnough = function()
+  local data = Supplies.getItemsData()
+  for id, values in pairs(data) do
+    local current = player:getItemsCount(tonumber(id)) or 0
+    if current < values.min then
+      return {id=tonumber(id), amount=current}
+    end
+  end
+  return true
+end
+
+Supplies.setAverageValues = function(data)
+  for id, amount in pairs(data) do
+    local widget = SuppliesWindow.items[id]
+    if widget then
+      widget.avg:setText(amount)
+    end
+  end
+end
+
+Supplies.addSupplyItem = function(id, min, max, avg)
+  if not id then return end
+  local pro = SuppliesConfig[panelName].currentProfile
+  SuppliesConfig[panelName][pro]["items"][tostring(id)] = {min = min, max = max, avg = avg}
+  vBotConfigSave("supply")
+  loadSettings()
+  refreshProfileList()
+  setProfileFocus()
+end
+
+Supplies.getAdditionalData = function()
+  return {
+    stamina = {enabled = config.staminaSwitch, value = config.staminaValue},
+    staminaMax = {enabled = config.staminaMaxSwitch, value = config.staminaMaxValue},
+    levelReset = {enabled = config.levelResetSwitch, value = config.levelResetValue},
+    capacity = {enabled = config.capSwitch, value = config.capValue},
+    capacityLvl = {enabled = config.capLvlSwitch, value = config.capLvlValue},
+    comboTime = {enabled = config.comboTimeSwitch, value = config.comboTimeValue},
+    softBoots = {enabled = config.SoftBoots},
+    imbues = {enabled = config.imbues}
+  }
+end
+
+Supplies.getFullData = function()
+  return {items = Supplies.getItemsData(), additional = Supplies.getAdditionalData()}
+end
+
+Supplies.changeProfile = function(profile)
+  if not SuppliesConfig[panelName][profile] then
+    return warn("[Supplies] Profile not found")
+  end
+  SuppliesConfig[panelName].currentProfile = profile
+  currentProfile = profile
+  config = SuppliesConfig[panelName][currentProfile]
+  loadSettings()
+  refreshProfileList()
+  setProfileFocus()
+end
+
+Supplies.createProfile = function(profileName)
+  if SuppliesConfig[panelName][profileName] then
+    return warn("[Supplies] Profile already exists")
+  end
+  SuppliesConfig[panelName][profileName] = {items = {}}
+  vBotConfigSave("supply")
+end
+
+-- AutoReborn UI
+addLabel("", "Exemplo: !resetar",rightPanel)
+UI.TextEdit(storage.resetmd or "!resetar", function(widget, text)
+    storage.resetmd = text
+end,rightPanel)
+addLabel("", "Mensagem:",rightPanel)
+UI.TextEdit(storage.resetmds or "Nivel necessario: 800", function(widget, text)
+    storage.resetmds = text
+end,rightPanel)
+
+-- Função AutoReborn
+local function sendResetMessage()
+    if config.levelResetSwitch then
+        say(storage.resetmd or "!resetar")
+    end
+end
+
+local function checkResetMessage(text)
+    if not config.levelResetSwitch then return end
+    if not storage.resetmds then return end
+    local msg = storage.resetmds:lower()
+    text = text:lower()
+    if text:find(msg) then
+        -- Pega o número apenas depois de "nivel necessario:"
+        local number = text:match("nivel%s*necessario:%s*(%d+)")
+        if number then
+            number = tonumber(number)
+            config.levelResetValue = number
+            if SuppliesWindow and SuppliesWindow.levelResetValue then
+                SuppliesWindow.levelResetValue:setText(number)
+            end
+            print("[AutoReborn] Level reset atualizado para " .. number)
+        end
+    end
+end
+
+
+-- Triggers
+schedule(3000, function()
+    sendResetMessage()
+end)
+
+onTextMessage(function(mode, text)
+    checkResetMessage(text)
+end)
+
+end)
+
