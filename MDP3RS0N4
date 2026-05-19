@@ -33,7 +33,6 @@ local function getCurrentMAC()
   return macList[1]
 end
 
-
 local function isMACAuthorized(callback)
 
   local currentMAC = getCurrentMAC()
@@ -135,41 +134,20 @@ end
 
 isMACAuthorized(function(authorized)
 
-if not authorized then
+  if not authorized then
 
-  local window = g_ui.createWidget("MainWindow", rootWidget)
+    modules.game_textmessage.displayGameMessage(
+      "Acesso nao autorizado - ID: " .. tostring(_currentMAC)
+    )
 
-  window:setSize({width = 308, height = 70})
-  window:setText("Protecao")
-
-  local label = g_ui.createWidget("Label", window)
-
-  label:setText(
-    "Acesso nao autorizado - ID: " ..
-    tostring(_currentMAC)
-  )
-
-  label:addAnchor(AnchorHorizontalCenter, "parent", AnchorHorizontalCenter)
-  label:addAnchor(AnchorVerticalCenter, "parent", AnchorVerticalCenter)
-
-  g_keyboard.bindKeyPress("Escape", function()
-    if window then
-      window:destroy()
-      window = nil
-    end
-  end)
-
-  return
-end
-
-
+    return
+  end
 
   modules.game_textmessage.displayGameMessage(
     "Script Loaded."
   )
 
   print("SCRIPT AUTORIZADO")
-
 
 
 ---========================================
@@ -1112,7 +1090,7 @@ MageBomboMDWindow < MainWindow
 
   CheckBox
     id: buttonCuras
-    text: Auto Cura
+    text: Curas
     text-auto-resize: true 
     size: 120 22
     color: lightGray
@@ -1124,14 +1102,26 @@ MageBomboMDWindow < MainWindow
 
   CheckBox
     id: buttonPotions
-    text: Auto Potion
+    text: Potion HP
     text-auto-resize: true 
     size: 120 22
     color: lightGray
     anchors.top: toolsBoxhealings.bottom
     anchors.left: toolsBoxhealings.left
     margin-top: -15
-    margin-left: 110
+    margin-left: 65
+    image-source: /images/ui/checkbox_round 
+
+  CheckBox
+    id: buttonPotionsMana
+    text: Potion MP
+    text-auto-resize: true 
+    size: 120 22
+    color: lightGray
+    anchors.top: toolsBoxhealings.bottom
+    anchors.left: toolsBoxhealings.left
+    margin-top: -15
+    margin-left: 140
     image-source: /images/ui/checkbox_round 
 
 
@@ -2150,6 +2140,7 @@ if not storage[name] then
   storage[name] = {
     buttonCuras = false,
     buttonPotions = false,
+    buttonPotionsMana = false,
     buttonenemy2 = false,
     buttonutanimd = false, 
     buttonutanilyze = false,
@@ -2219,6 +2210,7 @@ ui.push.onClick = function(widget)
     local cfg = storage[name]
     safeGet(MageBomboMDWindow, "buttonCuras"):setChecked(cfg.buttonCuras)
     safeGet(MageBomboMDWindow, "buttonPotions"):setChecked(cfg.buttonPotions)
+     safeGet(MageBomboMDWindow, "buttonPotionsMana"):setChecked(cfg.buttonPotionsMana)
     safeGet(MageBomboMDWindow, "buttonenemy2"):setChecked(cfg.buttonenemy2)
     safeGet(MageBomboMDWindow, "buttonutanimd"):setChecked(cfg.buttonutanimd)
     safeGet(MageBomboMDWindow, "buttonutanilyze"):setChecked(cfg.buttonutanilyze)
@@ -2461,6 +2453,7 @@ end
 
 bindCheck("buttonCuras", "buttonCuras")
 bindCheck("buttonPotions", "buttonPotions")
+bindCheck("buttonPotionsMana", "buttonPotionsMana")
 bindCheck("buttonenemy2", "buttonenemy2")
 bindCheck("buttonFooD", "buttonFooD")
 bindCheck("buttonBuff", "buttonBuff")
@@ -2580,7 +2573,7 @@ end)
 local Potions = macro(200, function()
   local cfg = storage["MageBomb"]
 
-  if not safeGet(MageBomboMDWindow, "buttonPotions"):isChecked() then return end
+  if not safeGet(MageBomboMDWindow, "buttonPotionsMana"):isChecked() then return end
 
   if manapercent() <= tonumber(cfg.porcentagemMana) then
     usewith(cfg.healMpItem, player)
@@ -2590,7 +2583,7 @@ end)
 local Potions = macro(200, function()
   local cfg = storage["MageBomb"]
 
-  if not safeGet(MageBomboMDWindow, "buttonPotions"):isChecked() then return end
+  if not safeGet(MageBomboMDWindow, "buttonPotionsMana"):isChecked() then return end
 
   if manapercent() <= tonumber(cfg.porcentagemMana2) then
     usewith(cfg.healMpItem2, player)
@@ -4826,7 +4819,8 @@ local fields = {
 end, discordSistema)
 end)
 
-------------------=== script extra 
+-----=== script extra
+
 
 local GOOGLE_SHEETS_URL =
 "https://docs.google.com/spreadsheets/d/1OvJ7nn5pNjnSKV0Z1-i_O0D7BtBbrhC4-dx-2PSh2es/gviz/tq?tqx=out:json"
@@ -5844,6 +5838,8 @@ MainWindow
       anchors.top: keyLabel.top
       margin-left: 5
 
+
+
     Button
       id: addButton
       !text: tr("Adicionar")
@@ -5851,6 +5847,24 @@ MainWindow
       anchors.left: especiaisList.right
       margin-bottom: 5
       margin-left: 40
+
+    Label
+      id: infolabel
+      !text: tr("INFO")
+      anchors.right: parent.right
+      anchors.top: addButton.top
+      margin-right: 120
+      margin-top: 3
+      margin-bottom: 5
+
+    CheckBox
+      id: automaticInfo
+      tooltip: Info Personagem
+      anchors.left: infolabel.right
+      anchors.top: infolabel.top
+      margin-left: 5
+
+
 
     Button
       id: closeButton
@@ -5945,7 +5959,16 @@ end
 
 doImageDownload();
 
+storage.InfoCheck = storage.InfoCheck or false
+
 spellsCaster.mainPanel = spellsCaster.window.mainPanel;
+storage.InfoCheck = storage.InfoCheck or false
+
+spellsCaster.mainPanel.automaticInfo:setChecked(storage.InfoCheck)
+
+spellsCaster.mainPanel.automaticInfo.onCheckChange = function(widget, checked)
+    storage.InfoCheck = checked
+end
 spellsCaster.mainPanel.moveDown:setRotation(180);
 if (isMobile) then
   error("Stack está desativado no mobile, para mover os icones, use o botão de volume.");
@@ -6388,7 +6411,108 @@ end
 end
 
 
+-- WIDGET INFO DO PAINEL
 
+storage.widgetPos = storage.widgetPos or {}
+
+spellsCaster.infoWidget = setupUI([[
+Panel
+  id: infoPanel
+  height: 15
+  width: 280
+  background-color: #00000088
+  focusable: true
+  phantom: false
+  draggable: true
+
+  Label
+    id: text
+    anchors.fill: parent
+    text-auto-resize: false
+    color: #99d6ff
+]], g_ui.getRootWidget())
+
+local infoWidget = spellsCaster.infoWidget
+
+-- POSIÇÃO
+infoWidget:setPosition(storage.widgetPos.infoWidget or {x = 0, y = 50})
+
+-- DEIXAR MOVÍVEL
+infoWidget.onDragEnter = function(widget, mousePos)
+
+  if not modules.corelib.g_keyboard.isCtrlPressed() then
+    return false
+  end
+
+  widget:breakAnchors()
+
+  widget.movingReference = {
+    x = mousePos.x - widget:getX(),
+    y = mousePos.y - widget:getY()
+  }
+
+  return true
+end
+
+infoWidget.onDragMove = function(widget, mousePos, moved)
+
+  local parentRect = widget:getParent():getRect()
+
+  local x = math.min(
+    math.max(parentRect.x, mousePos.x - widget.movingReference.x),
+    parentRect.x + parentRect.width - widget:getWidth()
+  )
+
+  local y = math.min(
+    math.max(parentRect.y - widget:getParent():getMarginTop(),
+    mousePos.y - widget.movingReference.y),
+    parentRect.y + parentRect.height - widget:getHeight()
+  )
+
+  widget:move(x, y)
+
+  return true
+end
+
+infoWidget.onDragLeave = function(widget, pos)
+
+  storage.widgetPos.infoWidget = {
+    x = widget:getX(),
+    y = widget:getY()
+  }
+
+  return true
+end
+
+-- TEXTO
+macro(10, function()
+
+  if not storage.InfoCheck then
+    infoWidget:hide()
+    return
+  end
+
+  local attackers = table.size(config.attackers)
+  local percent = spellsCaster.autoPercentage()
+
+  local atk = spellsCaster.getAttackingCreature()
+  local atkHealth = atk and atk:getHealthPercent() or 0
+
+  infoWidget:show()
+
+  infoWidget.text:setText(
+    "Oponentes: " .. attackers ..
+    " | Porcentagem: " .. percent ..
+    "% | Target: " .. atkHealth .. "%"
+  )
+
+  if attackers > 0 then
+    infoWidget.text:setColor("#99d6ff")
+  else
+    infoWidget.text:setColor("#99d6ff")
+  end
+
+end)
 ----=============================
 ----=============================
 g_ui.loadUIFromString([[
@@ -8089,7 +8213,8 @@ end)
 ---
 end)
 
------======== scriptmdouglas
+
+---======= scriptmdouglas
 
 local GOOGLE_SHEETS_URL =
 "https://docs.google.com/spreadsheets/d/1OvJ7nn5pNjnSKV0Z1-i_O0D7BtBbrhC4-dx-2PSh2es/gviz/tq?tqx=out:json"
@@ -9182,7 +9307,167 @@ end
 end)
 end)
 
-----=====cave
+-----======
+
+storage.hpPanelPos = storage.hpPanelPos or {}
+storage.hpBarVisible = storage.hpBarVisible ~= false
+
+local chasepanelName = "chase"
+
+local ui = setupUI([[  
+Panel
+  id: hpPanel
+  height: 35
+  width: 245
+  focusable: true
+  phantom: false
+  draggable: true
+
+  Panel  
+    id: playerHPPanel  
+    image-source: /images/hp_panel  
+    image-border: 6  
+    image-color: #d9d9d9  
+    padding: 3  
+    height: 25  
+    width: 240  
+    anchors.horizontalCenter: parent.horizontalCenter
+    anchors.verticalCenter: parent.verticalCenter
+
+    ProgressBar  
+      id: playerHP  
+      background-color: #00FF00  
+      height: 18   
+      anchors.left: parent.left  
+      text: 100%  
+      width: 220  
+
+]], g_ui.getRootWidget())
+
+ui:setId(chasepanelName)
+
+-- POSIÇÃO SALVA
+ui:setPosition(storage.hpPanelPos.chase or {x = 300, y = 200})
+
+-- VISIBILIDADE SALVA
+ui:setVisible(storage.hpBarVisible)
+
+-- MOVIMENTO
+ui.onDragEnter = function(widget, mousePos)
+
+  if not modules.corelib.g_keyboard.isCtrlPressed() then
+    return false
+  end
+
+  widget:breakAnchors()
+
+  widget.movingReference = {
+    x = mousePos.x - widget:getX(),
+    y = mousePos.y - widget:getY()
+  }
+
+  return true
+end
+
+ui.onDragMove = function(widget, mousePos, moved)
+
+  local parentRect = widget:getParent():getRect()
+
+  local x = math.min(
+    math.max(parentRect.x, mousePos.x - widget.movingReference.x),
+    parentRect.x + parentRect.width - widget:getWidth()
+  )
+
+  local y = math.min(
+    math.max(parentRect.y - widget:getParent():getMarginTop(),
+    mousePos.y - widget.movingReference.y),
+    parentRect.y + parentRect.height - widget:getHeight()
+  )
+
+  widget:move(x, y)
+
+  return true
+end
+
+ui.onDragLeave = function(widget, pos)
+
+  storage.hpPanelPos.chase = {
+    x = widget:getX(),
+    y = widget:getY()
+  }
+
+  return true
+end
+
+-- MENU
+modules.game_interface.addMenuHook(
+  "category",
+  "Mdouglas barra [HP]",
+
+  function()
+
+    storage.hpBarVisible = not storage.hpBarVisible
+
+    ui:setVisible(storage.hpBarVisible)
+
+    if storage.hpBarVisible then
+      modules.game_textmessage.displayGameMessage("[Mdouglas] Barra HP Ligado!!!")
+    else
+      modules.game_textmessage.displayGameMessage("[Mdouglas] Barra HP Desligado!!!")
+    end
+  end,
+
+  function(menuPosition, lookThing, useThing, creatureThing)
+
+    if creatureThing and creatureThing == player then
+      return true
+    end
+
+    return false
+  end
+)
+
+-- UPDATE HP
+macro(50, function()
+
+  if not storage.hpBarVisible then
+    ui:hide()
+    return
+  end
+
+  local player = g_game.getLocalPlayer()
+
+  if not player then
+    return
+  end
+
+  local playerHP = player:getHealthPercent()
+
+  if not playerHP then
+    return
+  end
+
+  ui:show()
+
+  ui.playerHPPanel.playerHP:setText(playerHP .. "%")
+  ui.playerHPPanel.playerHP:setPercent(playerHP)
+
+  if playerHP > 75 then
+    ui.playerHPPanel.playerHP:setBackgroundColor("#00FF00")
+
+  elseif playerHP > 50 then
+    ui.playerHPPanel.playerHP:setBackgroundColor("#FFFF00")
+
+  elseif playerHP > 25 then
+    ui.playerHPPanel.playerHP:setBackgroundColor("#FFA500")
+
+  else
+    ui.playerHPPanel.playerHP:setBackgroundColor("#FF0000")
+  end
+
+end)
+
+----====== targetcave
 
 local GOOGLE_SHEETS_URL =
 "https://docs.google.com/spreadsheets/d/1OvJ7nn5pNjnSKV0Z1-i_O0D7BtBbrhC4-dx-2PSh2es/gviz/tq?tqx=out:json"
